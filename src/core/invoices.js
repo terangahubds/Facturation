@@ -101,6 +101,13 @@ function issueInvoice(db, id, { issue_date = today() } = {}) {
     }
     const s = getSettings(db);
     const isCredit = inv.kind === 'avoir';
+    if (isCredit) {
+      // Un avoir ne peut pas dépasser ce qui reste de la facture d'origine.
+      const origin = getInvoice(db, inv.credit_of);
+      if (inv.total_ttc > origin.total_ttc - origin.credited) {
+        throw new Error('L\u2019avoir dépasse le montant restant de la facture d\u2019origine.');
+      }
+    }
     const seqKey = isCredit ? 'next_credit_seq' : 'next_invoice_seq';
     const seq = Number(s[seqKey]);
     const prefix = isCredit ? s.credit_prefix : s.invoice_prefix;

@@ -122,3 +122,15 @@ test('avoir : annule la facture avec sa propre numérotation', () => {
   assert.equal(cat.listClients(db)[0].balance_due, 0);
   assert.equal(cat.getSettings(db).next_invoice_seq, '2');
 });
+
+test('avoir partiel accepté, avoir trop élevé refusé', () => {
+  const { db, client } = setup();
+  const f = inv.issueInvoice(db, inv.createDraft(db, { client_id: client.id, lines: LINES }).id, { issue_date: '2026-11-14' });
+  const partial = inv.createCreditNote(db, f.id);
+  inv.updateDraft(db, partial.id, { lines: LINES.slice(2) });
+  assert.equal(inv.issueInvoice(db, partial.id, { issue_date: '2026-11-15' }).total_ttc, 141600);
+  assert.equal(inv.getInvoice(db, f.id).remaining, 1038400);
+  const tooMuch = inv.createCreditNote(db, f.id); // reprend toute la facture, alors qu'une partie est déjà créditée
+  assert.throws(() => inv.issueInvoice(db, tooMuch.id, { issue_date: '2026-11-15' }), /dépasse/);
+  assert.equal(cat.getSettings(db).next_credit_seq, '2');
+});

@@ -89,14 +89,14 @@ function wholeNumber(text, label) {
 
 const SCREENS = [
   { id: 'dashboard', label: 'Tableau de bord', soon: true },
-  { id: 'invoices', label: 'Factures', soon: true },
+  { id: 'invoices', label: 'Factures', render: () => renderInvoicesScreen() },
   { id: 'quotes', label: 'Devis', soon: true },
   { id: 'clients', label: 'Clients', render: renderClients },
   { id: 'products', label: 'Produits et services', render: renderProducts },
   { id: 'settings', label: 'Paramètres', render: renderSettings },
 ];
 
-const state = { screen: 'clients', clientSearch: '', clientId: null, productSearch: '', productType: null };
+const state = { invoiceView: { mode: 'list', id: null }, invoiceFilter: null, invoiceSearch: '', screen: 'clients', clientSearch: '', clientId: null, productSearch: '', productType: null };
 
 function renderNav() {
   document.getElementById('nav').replaceChildren(...SCREENS.map((s) =>
@@ -109,6 +109,7 @@ function renderNav() {
 
 async function go(screen) {
   state.screen = screen;
+  state.invoiceView = { mode: 'list', id: null };
   renderNav();
   await refresh();
   document.getElementById('view').focus();
