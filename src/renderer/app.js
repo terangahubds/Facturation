@@ -38,7 +38,7 @@ function toast(message) {
   el.textContent = message;
   el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 5000);
 }
 
 function field(label, name, value, opts = {}) {

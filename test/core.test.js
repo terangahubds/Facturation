@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { openDatabase } = require('../src/core/db');
 const cat = require('../src/core/catalog');
 const inv = require('../src/core/invoices');
+const { buildInvoiceHtml } = require('../src/core/document');
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -133,4 +134,25 @@ test('avoir partiel accepté, avoir trop élevé refusé', () => {
   const tooMuch = inv.createCreditNote(db, f.id); // reprend toute la facture, alors qu'une partie est déjà créditée
   assert.throws(() => inv.issueInvoice(db, tooMuch.id, { issue_date: '2026-11-15' }), /dépasse/);
   assert.equal(cat.getSettings(db).next_credit_seq, '2');
+});
+
+test('document PDF : contenu, échappement, brouillon refusé', () => {
+  const { db, client } = setup();
+  cat.updateSettings(db, { company_name: 'Teranga <Services>', company_ninea: '009876', payment_details: 'Wave 77 000 00 00' });
+  const draft = inv.createDraft(db, { client_id: client.id, lines: [{ description: '<script>alert(1)</script>', quantity: 1500, unit_price_ht: 1000, vat_rate: 1800 }] });
+  assert.throws(() => buildInvoiceHtml(draft, cat.getSettings(db)), /émis/);
+  const f = inv.issueInvoice(db, draft.id, { issue_date: '2026-11-01' });
+  const html = buildInvoiceHtml(f, cat.getSettings(db));
+  assert.ok(html.includes('Teranga &lt;Services&gt;'));
+  assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  assert.ok(!html.includes('<script>'));
+  assert.ok(html.includes('FAC-2026-0001'));
+  assert.ok(html.includes('1er novembre 2026'));
+  assert.ok(html.includes('1,5'));
+  assert.ok(html.includes('1\u00A0770\u00A0FCFA'));
+  assert.ok(html.includes('Paiement : Wave 77 000 00 00'));
+  const credit = inv.issueInvoice(db, inv.createCreditNote(db, f.id).id, { issue_date: '2026-11-02' });
+  const creditHtml = buildInvoiceHtml(credit, cat.getSettings(db), f);
+  assert.ok(creditHtml.includes('Sur la facture FAC-2026-0001'));
+  assert.ok(!creditHtml.includes('Paiement :'));
 });

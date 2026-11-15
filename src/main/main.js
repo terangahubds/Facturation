@@ -5,10 +5,11 @@
 
 const path = require('node:path');
 const fs = require('node:fs');
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron');
 const { openDatabase } = require('../core/db');
 const catalog = require('../core/catalog');
 const invoices = require('../core/invoices');
+const { buildInvoiceHtml } = require('../core/document');
 
 const API = {
   getSettings: catalog.getSettings,
@@ -54,6 +55,54 @@ function createWindow() {
   win.webContents.on('will-navigate', (event) => event.preventDefault());
 }
 
+// Charge le document dans une fenêtre invisible, exécute l'action, puis la ferme.
+async function withDocument(id, action) {
+  const inv = invoices.getInvoice(db, id);
+  const origin = inv.credit_of ? invoices.getInvoice(db, inv.credit_of) : null;
+  const html = buildInvoiceHtml(inv, catalog.getSettings(db), origin);
+  const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
+  try {
+    await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    return await action(win, inv);
+  } finally {
+    win.destroy();
+  }
+}
+
+// Enregistre le PDF à l'endroit choisi par l'utilisateur. Renvoie le chemin, ou null s'il annule.
+function exportInvoicePdf(parent, id) {
+  return withDocument(id, async (win, inv) => {
+    let target = process.env.FACTURATION_PDF_PATH; // utilisé par les tests automatiques
+    if (!target) {
+      const choice = await dialog.showSaveDialog(parent, {
+        title: 'Enregistrer le PDF',
+        defaultPath: path.join(app.getPath('documents'), `${inv.number}.pdf`),
+        filters: [{ name: 'Document PDF', extensions: ['pdf'] }],
+      });
+      if (choice.canceled || !choice.filePath) return null;
+      target = choice.filePath;
+    }
+    const pdf = await win.webContents.printToPDF({ pageSize: 'A4', printBackground: true, preferCSSPageSize: true });
+    try {
+      fs.writeFileSync(target, pdf);
+    } catch (err) {
+      throw new Error('Impossible d\u2019enregistrer le PDF à cet endroit. Vérifiez que le fichier n\u2019est pas ouvert dans un autre programme.');
+    }
+    return target;
+  });
+}
+
+// Ouvre la fenêtre d'impression de Windows. Renvoie true si l'impression est lancée, false si l'utilisateur annule.
+function printInvoice(id) {
+  return withDocument(id, (win) => new Promise((resolve, reject) => {
+    win.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
+      if (success) resolve(true);
+      else if (!reason || /cancel/i.test(reason)) resolve(false);
+      else reject(new Error('L\u2019impression a échoué. Vérifiez qu\u2019une imprimante est installée et allumée.'));
+    });
+  }));
+}
+
 app.whenReady().then(() => {
   const dataDir = process.env.FACTURATION_DATA_DIR || app.getPath('userData');
   fs.mkdirSync(dataDir, { recursive: true });
@@ -63,6 +112,10 @@ app.whenReady().then(() => {
     if (!Object.hasOwn(API, name)) throw new Error(`Opération inconnue : ${name}`);
     return API[name](db, ...args);
   });
+
+  ipcMain.handle('exportInvoicePdf', (event, id) => exportInvoicePdf(BrowserWindow.fromWebContents(event.sender), id));
+  ipcMain.handle('printInvoice', (_event, id) => printInvoice(id));
+  ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));
 
   Menu.setApplicationMenu(null);
   createWindow();

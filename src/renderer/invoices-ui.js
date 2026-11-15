@@ -314,6 +314,24 @@ async function renderInvoiceDetail(id) {
     } catch (err) { toast(err.message); }
   };
 
+  const cleanError = (err) => String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
+  const exportPdf = async () => {
+    try {
+      const filePath = await window.api.exportInvoicePdf(inv.id);
+      if (!filePath) return;
+      const el = document.getElementById('toast');
+      toast('PDF enregistré.');
+      el.append(' ', h('button', { type: 'button', class: 'toast-action', onclick: () => window.api.showFile(filePath) }, 'Ouvrir le dossier'));
+    } catch (err) { toast(cleanError(err)); }
+  };
+
+  const print = async () => {
+    try {
+      if (await window.api.printInvoice(inv.id)) toast('Document envoyé à l\u2019imprimante.');
+    } catch (err) { toast(cleanError(err)); }
+  };
+
   const paper = h('section', { class: 'paper', 'aria-label': 'Aperçu du document' },
     h('div', { class: 'paper-head' },
       h('div', { class: 'stack-s' },
@@ -383,7 +401,10 @@ async function renderInvoiceDetail(id) {
     h('header', { class: 'page-head' },
       h('div', {},
         h('button', { type: 'button', class: 'btn link back', onclick: () => openInvoice('list', null) }, '← Retour aux factures'),
-        h('div', { class: 'row' }, h('h1', {}, inv.number), statusChip(inv.display_status)))),
+        h('div', { class: 'row' }, h('h1', {}, inv.number), statusChip(inv.display_status))),
+      h('div', { class: 'row' },
+        h('button', { type: 'button', class: 'btn', onclick: exportPdf }, 'Enregistrer en PDF'),
+        h('button', { type: 'button', class: 'btn', onclick: print }, 'Imprimer'))),
     h('div', { class: 'split' }, h('div', { class: 'grow' }, paper), side),
   ];
 }
