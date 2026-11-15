@@ -15,20 +15,31 @@ const asar = path.join(dir, 'resources', 'app.asar');
 const WAIT_MS = 15000;
 
 // Lance l'application et indique si elle tourne encore après quelques secondes.
+// Si elle s'arrête, affiche son code de sortie et ses derniers messages pour le diagnostic.
 function staysAlive() {
   return new Promise((resolve) => {
-    const child = spawn(exe, process.platform === 'win32' ? [] : ['--no-sandbox'], { stdio: 'ignore' });
+    const args = process.platform === 'win32' ? ['--enable-logging'] : ['--no-sandbox', '--enable-logging'];
+    const child = spawn(exe, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let exited = false;
-    child.on('exit', () => { exited = true; });
-    child.on('error', () => { exited = true; });
+    let output = '';
+    child.stdout.on('data', (d) => { output += d; });
+    child.stderr.on('data', (d) => { output += d; });
+    child.on('exit', (code, signal) => {
+      exited = true;
+      console.log(`  arrêt de l'application : code ${code}${signal ? `, signal ${signal}` : ''}`);
+      const tail = output.trim().split(/\r?\n/).slice(-12).join('\n  ');
+      if (tail) console.log(`  ${tail}`);
+    });
+    child.on('error', (err) => { exited = true; console.log(`  lancement impossible : ${err.message}`); });
     setTimeout(() => {
-      if (!exited) {
+      const alive = !exited;
+      if (alive) {
         try {
           if (process.platform === 'win32') execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
           else child.kill('SIGKILL');
         } catch (err) { /* déjà arrêtée */ }
       }
-      setTimeout(() => resolve(!exited), 2000);
+      setTimeout(() => resolve(alive), 2000);
     }, WAIT_MS);
   });
 }
