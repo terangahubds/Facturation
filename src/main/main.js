@@ -9,7 +9,8 @@ const { app, BrowserWindow, ipcMain, Menu, dialog, shell } = require('electron')
 const { openDatabase } = require('../core/db');
 const catalog = require('../core/catalog');
 const invoices = require('../core/invoices');
-const { buildInvoiceHtml } = require('../core/document');
+const quotes = require('../core/quotes');
+const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
 
 const API = {
   getSettings: catalog.getSettings,
@@ -31,6 +32,15 @@ const API = {
   issueInvoice: invoices.issueInvoice,
   recordPayment: invoices.recordPayment,
   createCreditNote: invoices.createCreditNote,
+  listQuotes: quotes.listQuotes,
+  getQuote: quotes.getQuote,
+  createQuote: quotes.createQuote,
+  updateQuote: quotes.updateQuote,
+  deleteQuote: quotes.deleteQuote,
+  sendQuote: quotes.sendQuote,
+  setQuoteAnswer: quotes.setQuoteAnswer,
+  convertQuoteToInvoice: quotes.convertQuoteToInvoice,
+  duplicateQuote: quotes.duplicateQuote,
 };
 
 let db;
@@ -56,22 +66,29 @@ function createWindow() {
 }
 
 // Charge le document dans une fenêtre invisible, exécute l'action, puis la ferme.
-async function withDocument(id, action) {
-  const inv = invoices.getInvoice(db, id);
-  const origin = inv.credit_of ? invoices.getInvoice(db, inv.credit_of) : null;
-  const html = buildInvoiceHtml(inv, catalog.getSettings(db), origin);
+async function withDocument(kind, id, action) {
+  let doc;
+  let html;
+  if (kind === 'devis') {
+    doc = quotes.getQuote(db, id);
+    html = buildQuoteHtml(doc, catalog.getSettings(db));
+  } else {
+    doc = invoices.getInvoice(db, id);
+    const origin = doc.credit_of ? invoices.getInvoice(db, doc.credit_of) : null;
+    html = buildInvoiceHtml(doc, catalog.getSettings(db), origin);
+  }
   const win = new BrowserWindow({ show: false, webPreferences: { javascript: false } });
   try {
     await win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-    return await action(win, inv);
+    return await action(win, doc);
   } finally {
     win.destroy();
   }
 }
 
 // Enregistre le PDF à l'endroit choisi par l'utilisateur. Renvoie le chemin, ou null s'il annule.
-function exportInvoicePdf(parent, id) {
-  return withDocument(id, async (win, inv) => {
+function exportPdf(parent, kind, id) {
+  return withDocument(kind, id, async (win, inv) => {
     let target = process.env.FACTURATION_PDF_PATH; // utilisé par les tests automatiques
     if (!target) {
       const choice = await dialog.showSaveDialog(parent, {
@@ -93,8 +110,8 @@ function exportInvoicePdf(parent, id) {
 }
 
 // Ouvre la fenêtre d'impression de Windows. Renvoie true si l'impression est lancée, false si l'utilisateur annule.
-function printInvoice(id) {
-  return withDocument(id, (win) => new Promise((resolve, reject) => {
+function printDocument(kind, id) {
+  return withDocument(kind, id, (win) => new Promise((resolve, reject) => {
     win.webContents.print({ silent: false, printBackground: true }, (success, reason) => {
       if (success) resolve(true);
       else if (!reason || /cancel/i.test(reason)) resolve(false);
@@ -113,8 +130,8 @@ app.whenReady().then(() => {
     return API[name](db, ...args);
   });
 
-  ipcMain.handle('exportInvoicePdf', (event, id) => exportInvoicePdf(BrowserWindow.fromWebContents(event.sender), id));
-  ipcMain.handle('printInvoice', (_event, id) => printInvoice(id));
+  ipcMain.handle('exportPdf', (event, kind, id) => exportPdf(BrowserWindow.fromWebContents(event.sender), kind, id));
+  ipcMain.handle('printDocument', (_event, kind, id) => printDocument(kind, id));
   ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));
 
   Menu.setApplicationMenu(null);

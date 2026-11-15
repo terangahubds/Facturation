@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const { openDatabase } = require('../src/core/db');
 const cat = require('../src/core/catalog');
 const inv = require('../src/core/invoices');
-const { buildInvoiceHtml } = require('../src/core/document');
+const { buildInvoiceHtml, buildQuoteHtml } = require('../src/core/document');
+const quo = require('../src/core/quotes');
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -155,4 +156,51 @@ test('document PDF : contenu, échappement, brouillon refusé', () => {
   const creditHtml = buildInvoiceHtml(credit, cat.getSettings(db), f);
   assert.ok(creditHtml.includes('Sur la facture FAC-2026-0001'));
   assert.ok(!creditHtml.includes('Paiement :'));
+});
+
+test('devis : finalisation, réponse du client, conversion en facture', () => {
+  const { db, client } = setup();
+  const d = quo.createQuote(db, { client_id: client.id, lines: LINES });
+  assert.equal(d.display_status, 'brouillon');
+  assert.throws(() => quo.setQuoteAnswer(db, d.id, 'accepte'), /Finalisez/);
+  const sent = quo.sendQuote(db, d.id, { issue_date: '2026-11-09', validity_days: 30 });
+  assert.equal(sent.number, 'DEV-2026-0001');
+  assert.equal(sent.valid_until, '2026-12-09');
+  assert.equal(sent.total_ttc, 1180000);
+  assert.throws(() => quo.updateQuote(db, d.id, { note: 'x' }), /ne peut plus être modifié/);
+  assert.throws(() => quo.deleteQuote(db, d.id), /ne peut pas être supprimé/);
+  assert.throws(() => db.prepare('DELETE FROM quote_lines WHERE quote_id = ?').run(d.id), /ne peut plus être modifié/);
+  assert.throws(() => quo.convertQuoteToInvoice(db, d.id), /accepté/);
+
+  assert.equal(quo.setQuoteAnswer(db, d.id, 'refuse').status, 'refuse');
+  assert.equal(quo.setQuoteAnswer(db, d.id, 'accepte').status, 'accepte'); // le client change d'avis
+  const invoice = quo.convertQuoteToInvoice(db, d.id);
+  assert.equal(invoice.status, 'brouillon');
+  assert.equal(invoice.total_ttc, 1180000);
+  assert.equal(invoice.note, 'Selon devis DEV-2026-0001');
+  assert.equal(quo.getQuote(db, d.id).invoice_id, invoice.id);
+  assert.throws(() => quo.convertQuoteToInvoice(db, d.id), /déjà converti/);
+  assert.throws(() => quo.setQuoteAnswer(db, d.id, 'refuse'), /déjà converti/);
+  // la facture issue du devis s'émet normalement, dans la numérotation des factures
+  assert.equal(inv.issueInvoice(db, invoice.id, { issue_date: '2026-11-20' }).number, 'FAC-2026-0001');
+});
+
+test('devis : expiration, filtres, duplication, PDF', () => {
+  const { db, client } = setup();
+  const old = quo.sendQuote(db, quo.createQuote(db, { client_id: client.id, lines: LINES }).id, { issue_date: '2020-01-01', validity_days: 15 });
+  assert.equal(old.display_status, 'expire');
+  const copy = quo.duplicateQuote(db, old.id);
+  assert.equal(copy.status, 'brouillon');
+  assert.equal(copy.lines.length, 3);
+  assert.equal(quo.listQuotes(db).length, 2);
+  assert.equal(quo.listQuotes(db, { status: ['refuse', 'expire'] }).length, 1);
+  assert.equal(quo.listQuotes(db, { status: 'brouillon' }).length, 1);
+  assert.equal(quo.sendQuote(db, copy.id, { issue_date: '2026-11-15' }).number, 'DEV-2026-0002');
+  const empty = quo.createQuote(db, { client_id: client.id });
+  assert.throws(() => quo.sendQuote(db, empty.id), /au moins une ligne/);
+  assert.throws(() => buildQuoteHtml(empty, cat.getSettings(db)), /finalisé/);
+  const html = buildQuoteHtml(quo.getQuote(db, old.id), cat.getSettings(db));
+  assert.ok(html.includes('Devis'));
+  assert.ok(html.includes('DEV-2020-0001'));
+  assert.ok(html.includes('Valable jusqu’au 16 janvier 2020'));
 });

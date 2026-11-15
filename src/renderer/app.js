@@ -90,13 +90,13 @@ function wholeNumber(text, label) {
 const SCREENS = [
   { id: 'dashboard', label: 'Tableau de bord', soon: true },
   { id: 'invoices', label: 'Factures', render: () => renderInvoicesScreen() },
-  { id: 'quotes', label: 'Devis', soon: true },
+  { id: 'quotes', label: 'Devis', render: () => renderQuotesScreen() },
   { id: 'clients', label: 'Clients', render: renderClients },
   { id: 'products', label: 'Produits et services', render: renderProducts },
   { id: 'settings', label: 'Paramètres', render: renderSettings },
 ];
 
-const state = { invoiceView: { mode: 'list', id: null }, invoiceFilter: null, invoiceSearch: '', screen: 'clients', clientSearch: '', clientId: null, productSearch: '', productType: null };
+const state = { quoteView: { mode: 'list', id: null }, quoteFilter: null, quoteSearch: '', invoiceView: { mode: 'list', id: null }, invoiceFilter: null, invoiceSearch: '', screen: 'clients', clientSearch: '', clientId: null, productSearch: '', productType: null };
 
 function renderNav() {
   document.getElementById('nav').replaceChildren(...SCREENS.map((s) =>
@@ -110,6 +110,7 @@ function renderNav() {
 async function go(screen) {
   state.screen = screen;
   state.invoiceView = { mode: 'list', id: null };
+  state.quoteView = { mode: 'list', id: null };
   renderNav();
   await refresh();
   document.getElementById('view').focus();
@@ -358,7 +359,9 @@ async function renderSettings() {
         delete v.next_number;
         v.default_vat_rate = Math.round(wholeNumber(v.default_vat_rate, 'TVA par défaut') * 100);
         v.default_payment_days = Math.round(wholeNumber(v.default_payment_days, 'Délai de paiement'));
+        v.quote_validity_days = Math.round(wholeNumber(v.quote_validity_days, 'Validité des devis'));
         if (!v.invoice_prefix.trim()) throw new Error('Le préfixe des factures est obligatoire.');
+        if (!v.quote_prefix.trim()) throw new Error('Le préfixe des devis est obligatoire.');
         await call('updateSettings', v);
         await refreshBrand();
         toast('Paramètres enregistrés.');
@@ -388,7 +391,10 @@ async function renderSettings() {
       field('Prochain numéro', 'next_number', nextNumber, { readonly: true, hint: 'Automatique et continu : ne se modifie pas à la main.' })),
     h('div', { class: 'grid' },
       field('TVA par défaut (%)', 'default_vat_rate', Number(s.default_vat_rate) / 100, { type: 'number', min: 0, step: 0.01 }),
-      field('Délai de paiement (jours)', 'default_payment_days', s.default_payment_days, { type: 'number', min: 0, step: 1 }))),
+      field('Délai de paiement (jours)', 'default_payment_days', s.default_payment_days, { type: 'number', min: 0, step: 1 })),
+    h('div', { class: 'grid' },
+      field('Préfixe des devis', 'quote_prefix', s.quote_prefix),
+      field('Validité des devis (jours)', 'quote_validity_days', s.quote_validity_days, { type: 'number', min: 0, step: 1 }))),
   h('section', { class: 'card narrow' },
     h('h2', {}, 'Paiement et mentions'),
     field('Coordonnées de paiement', 'payment_details', s.payment_details, { multiline: true, hint: 'Compte bancaire, Wave, Orange Money…' }),

@@ -108,6 +108,62 @@ const MIGRATIONS = [
   WHEN (SELECT status FROM invoices WHERE id = OLD.invoice_id) = 'emise'
   BEGIN SELECT RAISE(ABORT, 'Une facture émise ne peut plus être modifiée.'); END;
   `,
+  `
+  -- Devis. status : 'brouillon', puis 'envoye' (finalisé), 'accepte' ou 'refuse'.
+  -- invoice_id : la facture créée à partir du devis, s'il a été converti.
+  CREATE TABLE quotes (
+    id             INTEGER PRIMARY KEY,
+    status         TEXT NOT NULL DEFAULT 'brouillon' CHECK (status IN ('brouillon', 'envoye', 'accepte', 'refuse')),
+    number         TEXT UNIQUE,
+    client_id      INTEGER NOT NULL REFERENCES clients(id),
+    invoice_id     INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+    issue_date     TEXT,
+    valid_until    TEXT,
+    note           TEXT NOT NULL DEFAULT '',
+    client_name    TEXT NOT NULL DEFAULT '',
+    client_address TEXT NOT NULL DEFAULT '',
+    client_ninea   TEXT NOT NULL DEFAULT '',
+    total_ht       INTEGER NOT NULL DEFAULT 0,
+    total_vat      INTEGER NOT NULL DEFAULT 0,
+    total_ttc      INTEGER NOT NULL DEFAULT 0,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK ((status = 'brouillon' AND number IS NULL) OR (status <> 'brouillon' AND number IS NOT NULL))
+  );
+
+  CREATE TABLE quote_lines (
+    id            INTEGER PRIMARY KEY,
+    quote_id      INTEGER NOT NULL REFERENCES quotes(id) ON DELETE CASCADE,
+    position      INTEGER NOT NULL,
+    description   TEXT NOT NULL,
+    quantity      INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price_ht INTEGER NOT NULL CHECK (unit_price_ht >= 0),
+    vat_rate      INTEGER NOT NULL CHECK (vat_rate >= 0),
+    total_ht      INTEGER NOT NULL
+  );
+
+  CREATE INDEX idx_quotes_client ON quotes(client_id);
+  CREATE INDEX idx_quote_lines_quote ON quote_lines(quote_id);
+
+  -- Les lignes d'un devis finalisé sont figées, comme celles d'une facture émise.
+  CREATE TRIGGER quote_lines_no_insert_final
+  BEFORE INSERT ON quote_lines
+  WHEN (SELECT status FROM quotes WHERE id = NEW.quote_id) <> 'brouillon'
+  BEGIN SELECT RAISE(ABORT, 'Un devis finalisé ne peut plus être modifié.'); END;
+
+  CREATE TRIGGER quote_lines_no_update_final
+  BEFORE UPDATE ON quote_lines
+  WHEN (SELECT status FROM quotes WHERE id = OLD.quote_id) <> 'brouillon'
+  BEGIN SELECT RAISE(ABORT, 'Un devis finalisé ne peut plus être modifié.'); END;
+
+  CREATE TRIGGER quote_lines_no_delete_final
+  BEFORE DELETE ON quote_lines
+  WHEN (SELECT status FROM quotes WHERE id = OLD.quote_id) <> 'brouillon'
+  BEGIN SELECT RAISE(ABORT, 'Un devis finalisé ne peut plus être modifié.'); END;
+
+  CREATE TRIGGER quotes_no_delete_final
+  BEFORE DELETE ON quotes WHEN OLD.status <> 'brouillon'
+  BEGIN SELECT RAISE(ABORT, 'Un devis finalisé ne peut pas être supprimé.'); END;
+  `,
 ];
 
 const DEFAULT_SETTINGS = {
@@ -126,6 +182,9 @@ const DEFAULT_SETTINGS = {
   credit_prefix: 'AV',
   next_invoice_seq: '1',
   next_credit_seq: '1',
+  quote_prefix: 'DEV',
+  next_quote_seq: '1',
+  quote_validity_days: '30',
 };
 
 function openDatabase(path) {

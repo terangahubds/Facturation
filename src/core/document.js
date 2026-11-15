@@ -47,29 +47,23 @@ const STYLE = `
   .foot div + div { margin-top: 2mm; }
 `;
 
-// inv : facture émise avec ses lignes. settings : paramètres de l'entreprise.
-// origin : facture d'origine quand le document est un avoir.
-function buildInvoiceHtml(inv, settings, origin = null) {
-  if (inv.status !== 'emise') throw new Error('Seul un document émis peut être imprimé ou exporté en PDF.');
+// Mise en page commune aux factures, avoirs et devis.
+function renderDocument({ title, doc, settings, meta, toLabel, footParts }) {
   const s = settings;
-  const isCredit = inv.kind === 'avoir';
   const ids = [s.company_ninea && `NINEA : ${esc(s.company_ninea)}`, s.company_rccm && `RCCM : ${esc(s.company_rccm)}`].filter(Boolean).join(' · ');
   const contact = [s.company_phone, s.company_email].filter(Boolean).map(esc).join(' · ');
 
-  const rows = inv.lines.map((l) => `<tr>
+  const rows = doc.lines.map((l) => `<tr>
     <td>${esc(l.description)}</td>
     <td class="num">${quantity(l.quantity)}</td>
     <td class="num">${money(l.unit_price_ht)}</td>
     <td class="num">${percent(l.vat_rate)}</td>
     <td class="num">${money(l.total_ht)}</td></tr>`).join('');
 
-  const foot = lines(
-    !isCredit && s.payment_details && `<span class="pre">Paiement : ${esc(s.payment_details)}</span>`,
-    inv.note && `<span class="pre">${esc(inv.note)}</span>`,
-    s.legal_footer && `<span class="pre">${esc(s.legal_footer)}</span>`);
+  const foot = lines(...footParts.map((text) => text && `<span class="pre">${esc(text)}</span>`));
 
   return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>${esc(inv.number)}</title><style>${STYLE}</style></head>
+<html lang="fr"><head><meta charset="utf-8"><title>${esc(doc.number)}</title><style>${STYLE}</style></head>
 <body>
   <div class="head">
     <div>
@@ -79,30 +73,62 @@ function buildInvoiceHtml(inv, settings, origin = null) {
     contact && `<span class="muted">${contact}</span>`)}
     </div>
     <div class="right">
-      <div class="title">${isCredit ? 'Avoir' : 'Facture'}</div>
-      <div>N° ${esc(inv.number)}</div>
-      ${lines(`<span class="muted">Date d’émission : ${longDate(inv.issue_date)}</span>`,
-    !isCredit && `<span class="muted">Échéance : ${longDate(inv.due_date)}</span>`,
-    origin && `<span class="muted">Sur la facture ${esc(origin.number)}</span>`)}
+      <div class="title">${esc(title)}</div>
+      <div>N° ${esc(doc.number)}</div>
+      ${lines(...meta.map((text) => text && `<span class="muted">${esc(text)}</span>`))}
     </div>
   </div>
   <div class="to">
-    <div class="label">${isCredit ? 'Client' : 'Facturé à'}</div>
-    <div class="name">${esc(inv.client_name)}</div>
-    ${lines(inv.client_address && `<span class="muted pre">${esc(inv.client_address)}</span>`,
-    inv.client_ninea && `<span class="muted">NINEA : ${esc(inv.client_ninea)}</span>`)}
+    <div class="label">${esc(toLabel)}</div>
+    <div class="name">${esc(doc.client_name)}</div>
+    ${lines(doc.client_address && `<span class="muted pre">${esc(doc.client_address)}</span>`,
+    doc.client_ninea && `<span class="muted">NINEA : ${esc(doc.client_ninea)}</span>`)}
   </div>
   <table>
     <thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">Prix unitaire HT</th><th class="num">TVA</th><th class="num">Total HT</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="totals">
-    <div><span class="muted">Total HT</span><span class="num">${money(inv.total_ht)}</span></div>
-    <div><span class="muted">TVA</span><span class="num">${money(inv.total_vat)}</span></div>
-    <div class="ttc"><span>Total TTC</span><span class="num">${money(inv.total_ttc)}</span></div>
+    <div><span class="muted">Total HT</span><span class="num">${money(doc.total_ht)}</span></div>
+    <div><span class="muted">TVA</span><span class="num">${money(doc.total_vat)}</span></div>
+    <div class="ttc"><span>Total TTC</span><span class="num">${money(doc.total_ttc)}</span></div>
   </div>
   ${foot ? `<div class="foot">${foot}</div>` : ''}
 </body></html>`;
 }
 
-module.exports = { buildInvoiceHtml, esc };
+// inv : facture ou avoir émis, avec ses lignes. origin : facture d'origine d'un avoir.
+function buildInvoiceHtml(inv, settings, origin = null) {
+  if (inv.status !== 'emise') throw new Error('Seul un document émis peut être imprimé ou exporté en PDF.');
+  const isCredit = inv.kind === 'avoir';
+  return renderDocument({
+    title: isCredit ? 'Avoir' : 'Facture',
+    doc: inv,
+    settings,
+    meta: [
+      `Date d’émission : ${longDate(inv.issue_date)}`,
+      !isCredit && `Échéance : ${longDate(inv.due_date)}`,
+      origin && `Sur la facture ${origin.number}`,
+    ],
+    toLabel: isCredit ? 'Client' : 'Facturé à',
+    footParts: [
+      !isCredit && settings.payment_details && `Paiement : ${settings.payment_details}`,
+      inv.note,
+      settings.legal_footer,
+    ],
+  });
+}
+
+function buildQuoteHtml(quote, settings) {
+  if (quote.status === 'brouillon') throw new Error('Seul un devis finalisé peut être imprimé ou exporté en PDF.');
+  return renderDocument({
+    title: 'Devis',
+    doc: quote,
+    settings,
+    meta: [`Date : ${longDate(quote.issue_date)}`, `Valable jusqu’au ${longDate(quote.valid_until)}`],
+    toLabel: 'Adressé à',
+    footParts: [quote.note, settings.legal_footer],
+  });
+}
+
+module.exports = { buildInvoiceHtml, buildQuoteHtml, esc };

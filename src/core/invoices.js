@@ -48,14 +48,16 @@ function writeLines(db, invoiceId, lines) {
     .run(t.total_ht, t.total_vat, t.total_ttc, invoiceId);
 }
 
-function createDraft(db, { client_id, lines = [], note = '' }) {
+// nested : l'appelant a déjà ouvert une transaction (conversion d'un devis).
+function createDraft(db, { client_id, lines = [], note = '', nested = false }) {
   getClient(db, client_id);
   checkLines(lines);
-  return transaction(db, () => {
+  const insert = () => {
     const id = Number(db.prepare('INSERT INTO invoices (client_id, note) VALUES (?, ?)').run(client_id, note).lastInsertRowid);
     writeLines(db, id, lines);
     return getInvoice(db, id);
-  });
+  };
+  return nested ? insert() : transaction(db, insert);
 }
 
 function updateDraft(db, id, { client_id, lines, note }) {
@@ -193,7 +195,7 @@ function createCreditNote(db, invoiceId) {
 }
 
 module.exports = {
-  lineTotal, computeTotals,
+  lineTotal, computeTotals, checkLines, addDays, today,
   createDraft, updateDraft, deleteDraft, issueInvoice,
   getInvoice, listInvoices, recordPayment, createCreditNote,
 };

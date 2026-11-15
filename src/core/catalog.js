@@ -4,7 +4,7 @@
 const { DEFAULT_SETTINGS } = require('./db');
 
 // Ces compteurs ne se modifient jamais à la main : la numérotation doit rester continue.
-const PROTECTED_SETTINGS = new Set(['next_invoice_seq', 'next_credit_seq']);
+const PROTECTED_SETTINGS = new Set(['next_invoice_seq', 'next_credit_seq', 'next_quote_seq']);
 
 function getSettings(db) {
   const out = {};

@@ -145,3 +145,6 @@ table.lines input.num { text-align: right; }
 .payments li { display: flex; justify-content: space-between; gap: 12px; }
 input[type="date"] { min-height: 44px; width: 100%; padding: 0 10px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; }
 .page-head > .row { flex-direction: row; align-items: center; }
+.status.envoye { background: #E6EDFC; color: #1B45A8; }
+.status.accepte { background: var(--accent-tint); color: var(--accent-ink); }
+.status.refuse { background: var(--danger-tint); color: var(--danger); }
