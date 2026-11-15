@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   backupDatabase: () => ipcRenderer.invoke('backupDatabase'),
   pickBackup: () => ipcRenderer.invoke('pickBackup'),
   restoreDatabase: (source) => ipcRenderer.invoke('restoreDatabase', source),
+  getLicence: () => ipcRenderer.invoke('getLicence'),
+  activateLicence: (text) => ipcRenderer.invoke('activateLicence', text),
+  importLicenceFile: () => ipcRenderer.invoke('importLicenceFile'),
   showFile: (filePath) => ipcRenderer.invoke('showFile', filePath),
 });

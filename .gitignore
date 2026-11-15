@@ -4,3 +4,6 @@ out/
 *.sqlite
 *.sqlite-journal
 *.log
+licence-cle-privee*.pem
+*.pem
+licences/

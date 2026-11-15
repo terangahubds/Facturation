@@ -8,6 +8,7 @@ const { buildInvoiceHtml, buildQuoteHtml } = require('../src/core/document');
 const quo = require('../src/core/quotes');
 const { getDashboard } = require('../src/core/dashboard');
 const { createBackup, inspectBackup } = require('../src/core/backup');
+const lic = require('../src/core/licence');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -285,4 +286,37 @@ test('sauvegarde : copie complète, relisible, fichiers invalides refusés', () 
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('licence : signature, autre ordinateur, expiration, falsification', () => {
+  const keys = lic.generateKeyPair();
+  const code = lic.machineCode('4C4C4544-0042-3510-8052-B7C04F4A3432');
+  assert.match(code, /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){3}$/);
+  assert.equal(lic.machineCode('  4c4c4544-0042-3510-8052-b7c04f4a3432 '), code); // stable
+  assert.notEqual(lic.machineCode('autre-ordinateur'), code);
+  assert.equal(lic.normalizeCode(code.toLowerCase().replace(/-/g, ' ')), code);
+  assert.throws(() => lic.normalizeCode('ABC'), /16 caractères/);
+
+  const text = lic.createLicence({ machine: code, name: 'Cabinet Diallo', issued: '2026-11-15' }, keys.privateKey);
+  const ok = lic.checkLicence(text, code, keys.publicKey, '2026-11-16');
+  assert.equal(ok.status, 'valide');
+  assert.equal(ok.name, 'Cabinet Diallo');
+  assert.equal(lic.checkLicence(`  ${text.slice(0, 40)}\n${text.slice(40)}  `, code, keys.publicKey, '2026-11-16').status, 'valide');
+
+  assert.equal(lic.checkLicence('', code, keys.publicKey, '2026-11-16').status, 'absente');
+  assert.equal(lic.checkLicence('nimporte quoi', code, keys.publicKey, '2026-11-16').status, 'invalide');
+  assert.equal(lic.checkLicence(text, lic.machineCode('autre-ordinateur'), keys.publicKey, '2026-11-16').status, 'autre_machine');
+  // une licence signée par quelqu'un d'autre est refusée
+  assert.equal(lic.checkLicence(text, code, lic.generateKeyPair().publicKey, '2026-11-16').status, 'invalide');
+  // modifier le contenu (ici le code machine) casse la signature
+  const [prefix, , signature] = text.split('.');
+  const forged = Buffer.from(JSON.stringify({ v: 1, machine: lic.machineCode('autre-ordinateur'), name: 'Pirate', issued: '2026-11-15', expires: null })).toString('base64url');
+  assert.equal(lic.checkLicence(`${prefix}.${forged}.${signature}`, lic.machineCode('autre-ordinateur'), keys.publicKey, '2026-11-16').status, 'invalide');
+
+  const timed = lic.createLicence({ machine: code, name: 'Essai', issued: '2026-11-15', expires: '2026-12-31' }, keys.privateKey);
+  assert.equal(lic.checkLicence(timed, code, keys.publicKey, '2026-12-31').status, 'valide');
+  const expired = lic.checkLicence(timed, code, keys.publicKey, '2027-01-01');
+  assert.equal(expired.status, 'expiree');
+  assert.match(expired.message, /31\/12\/2026/);
+  assert.throws(() => lic.createLicence({ machine: code, name: ' ', issued: '2026-11-15' }, keys.privateKey), /titulaire/);
 });

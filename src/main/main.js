@@ -12,6 +12,9 @@ const invoices = require('../core/invoices');
 const quotes = require('../core/quotes');
 const { getDashboard } = require('../core/dashboard');
 const { createBackup, inspectBackup } = require('../core/backup');
+const { machineCode, checkLicence } = require('../core/licence');
+const LICENCE_PUBLIC_KEY = require('../core/licence-key');
+const { rawMachineId } = require('./machine');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
 
 const API = {
@@ -48,6 +51,8 @@ const API = {
 
 let db;
 let dbPath;
+let licencePath;
+let licence; // état courant de la licence, recalculé au démarrage et à chaque activation
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -124,6 +129,49 @@ function printDocument(kind, id) {
   }));
 }
 
+// La licence est exigée dans l'application installée. En développement (npm start), elle ne
+// l'est que si FACTURATION_ENFORCE_LICENCE=1.
+function licenceEnforced() {
+  return app.isPackaged || process.env.FACTURATION_ENFORCE_LICENCE === '1';
+}
+
+function readLicence() {
+  let text = '';
+  try { text = fs.readFileSync(licencePath, 'utf8'); } catch (err) { /* pas encore de licence */ }
+  const code = machineCode(rawMachineId());
+  licence = { ...checkLicence(text, code, LICENCE_PUBLIC_KEY, dateStamp()), machine_code: code, enforced: licenceEnforced(), version: app.getVersion() };
+  return licence;
+}
+
+// Vérifie le texte d'une licence et l'installe s'il est valide pour cet ordinateur.
+function activateLicence(text) {
+  const result = checkLicence(text, machineCode(rawMachineId()), LICENCE_PUBLIC_KEY, dateStamp());
+  if (result.status !== 'valide') throw new Error(result.message);
+  fs.writeFileSync(licencePath, `${String(text).replace(/\s+/g, '')}\n`);
+  return readLicence();
+}
+
+async function importLicenceFile(parent) {
+  let source = process.env.FACTURATION_LICENCE_FILE; // utilisé par les tests automatiques
+  if (!source) {
+    const choice = await dialog.showOpenDialog(parent, {
+      title: 'Choisir le fichier de licence',
+      properties: ['openFile'],
+      filters: [{ name: 'Licence Facturation', extensions: ['licence'] }, { name: 'Tous les fichiers', extensions: ['*'] }],
+    });
+    if (choice.canceled || choice.filePaths.length === 0) return null;
+    source = choice.filePaths[0];
+  }
+  let text;
+  try {
+    if (fs.statSync(source).size > 10000) throw new Error('trop gros');
+    text = fs.readFileSync(source, 'utf8');
+  } catch (err) {
+    throw new Error('Ce fichier n\u2019est pas un fichier de licence.');
+  }
+  return activateLicence(text);
+}
+
 function dateStamp() {
   const d = new Date();
   const two = (n) => String(n).padStart(2, '0');
@@ -192,16 +240,29 @@ app.whenReady().then(() => {
   dbPath = path.join(dataDir, 'facturation.sqlite');
   db = openDatabase(dbPath);
 
+  licencePath = path.join(dataDir, 'licence.txt');
+  readLicence();
+
+  // Sans licence valide, aucune opération sur les données n'est acceptée, même en contournant l'écran d'activation.
+  const requireLicence = () => {
+    if (licence.enforced && readLicence().status !== 'valide') throw new Error('Une licence valide est nécessaire pour utiliser le logiciel.');
+  };
+
+  ipcMain.handle('getLicence', () => readLicence());
+  ipcMain.handle('activateLicence', (_event, text) => activateLicence(text));
+  ipcMain.handle('importLicenceFile', (event) => importLicenceFile(BrowserWindow.fromWebContents(event.sender)));
+
   ipcMain.handle('api', (_event, name, ...args) => {
+    requireLicence();
     if (!Object.hasOwn(API, name)) throw new Error(`Opération inconnue : ${name}`);
     return API[name](db, ...args);
   });
 
-  ipcMain.handle('exportPdf', (event, kind, id) => exportPdf(BrowserWindow.fromWebContents(event.sender), kind, id));
-  ipcMain.handle('printDocument', (_event, kind, id) => printDocument(kind, id));
-  ipcMain.handle('backupDatabase', (event) => backupDatabase(BrowserWindow.fromWebContents(event.sender)));
-  ipcMain.handle('pickBackup', (event) => pickBackup(BrowserWindow.fromWebContents(event.sender)));
-  ipcMain.handle('restoreDatabase', (_event, source) => restoreDatabase(source));
+  ipcMain.handle('exportPdf', (event, kind, id) => { requireLicence(); return exportPdf(BrowserWindow.fromWebContents(event.sender), kind, id); });
+  ipcMain.handle('printDocument', (_event, kind, id) => { requireLicence(); return printDocument(kind, id); });
+  ipcMain.handle('backupDatabase', (event) => { requireLicence(); return backupDatabase(BrowserWindow.fromWebContents(event.sender)); });
+  ipcMain.handle('pickBackup', (event) => { requireLicence(); return pickBackup(BrowserWindow.fromWebContents(event.sender)); });
+  ipcMain.handle('restoreDatabase', (_event, source) => { requireLicence(); return restoreDatabase(source); });
   ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));
 
   Menu.setApplicationMenu(null);

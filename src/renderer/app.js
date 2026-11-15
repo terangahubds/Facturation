@@ -402,6 +402,8 @@ async function renderSettings() {
     field('Mentions légales en pied de facture', 'legal_footer', s.legal_footer, { multiline: true })),
   backupSection(s));
 
+  const licenceCard = await licenceSection();
+
   form.style.display = 'flex';
   form.style.flexDirection = 'column';
   form.style.gap = '20px';
@@ -411,6 +413,7 @@ async function renderSettings() {
       h('div', {}, h('h1', {}, 'Paramètres'), h('span', { class: 'muted' }, 'Ces informations apparaissent sur chaque facture et chaque devis.')),
       h('button', { type: 'submit', form: 'settings-form', class: 'btn primary' }, 'Enregistrer')),
     form,
+    licenceCard,
   ];
 }
 
@@ -486,7 +489,13 @@ function backupSection(s) {
 
 // --- Démarrage ---
 
-(async () => {
+async function startApp() {
   await refreshBrand();
   await go('dashboard');
+}
+
+(async () => {
+  const lic = await window.api.getLicence();
+  if (lic.enforced && lic.status !== 'valide') renderActivation(lic, startApp);
+  else await startApp();
 })();
