@@ -10,9 +10,11 @@ const { openDatabase } = require('../core/db');
 const catalog = require('../core/catalog');
 const invoices = require('../core/invoices');
 const quotes = require('../core/quotes');
+const { getDashboard } = require('../core/dashboard');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
 
 const API = {
+  getDashboard: (database) => getDashboard(database),
   getSettings: catalog.getSettings,
   updateSettings: catalog.updateSettings,
   listClients: catalog.listClients,

@@ -6,6 +6,7 @@ const cat = require('../src/core/catalog');
 const inv = require('../src/core/invoices');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../src/core/document');
 const quo = require('../src/core/quotes');
+const { getDashboard } = require('../src/core/dashboard');
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -203,4 +204,39 @@ test('devis : expiration, filtres, duplication, PDF', () => {
   assert.ok(html.includes('Devis'));
   assert.ok(html.includes('DEV-2020-0001'));
   assert.ok(html.includes('Valable jusqu’au 16 janvier 2020'));
+});
+
+test('tableau de bord : chiffres du mois, retards, série mensuelle', () => {
+  const { db, client } = setup();
+  const empty = getDashboard(db, { on: '2026-11-15' });
+  assert.equal(empty.month_label, 'Novembre 2026');
+  assert.equal(empty.billed.total, 0);
+  assert.equal(empty.months.length, 6);
+  assert.deepEqual(empty.months.map((m) => m.label), ['Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre']);
+
+  const issue = (date, lines = LINES) => inv.issueInvoice(db, inv.createDraft(db, { client_id: client.id, lines }).id, { issue_date: date });
+  const sept = issue('2026-09-10');                 // 1 180 000, échéance 10 oct. : en retard
+  const oct = issue('2026-10-20', LINES.slice(1));  // 354 000, échéance 19 nov. : en attente
+  const nov = issue('2026-11-05');                  // 1 180 000, payée en partie
+  inv.recordPayment(db, sept.id, { amount: 180000, paid_on: '2026-10-01' });
+  inv.recordPayment(db, nov.id, { amount: 500000, paid_on: '2026-11-10' });
+  const credit = inv.createCreditNote(db, nov.id);
+  inv.updateDraft(db, credit.id, { lines: LINES.slice(2) });
+  inv.issueInvoice(db, credit.id, { issue_date: '2026-11-12' }); // avoir de 141 600
+  inv.createDraft(db, { client_id: client.id, lines: LINES });   // un brouillon ne compte pas
+  quo.sendQuote(db, quo.createQuote(db, { client_id: client.id, lines: LINES }).id, { issue_date: '2026-11-01' });
+
+  const d = getDashboard(db, { on: '2026-11-15' });
+  assert.deepEqual(d.billed, { total: 1180000 - 141600, count: 1 });
+  assert.deepEqual(d.collected, { total: 500000, count: 1 });
+  assert.deepEqual(d.late, { total: 1000000, count: 1 });
+  assert.deepEqual(d.pending, { total: 354000 + (1180000 - 141600 - 500000), count: 2 });
+  assert.equal(d.late_invoices[0].number, sept.number);
+  assert.equal(d.late_invoices[0].days_late, 36);
+  assert.deepEqual(d.months.map((m) => m.total), [0, 0, 0, 1180000, 354000, 1038400]);
+  assert.deepEqual(d.open_quotes, { total: 1180000, count: 1 });
+  assert.ok(oct.number);
+  // en janvier, la fenêtre de six mois chevauche deux années
+  assert.deepEqual(getDashboard(db, { on: '2027-01-10' }).months.map((m) => `${m.label} ${m.year}`),
+    ['Août 2026', 'Septembre 2026', 'Octobre 2026', 'Novembre 2026', 'Décembre 2026', 'Janvier 2027']);
 });

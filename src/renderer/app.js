@@ -11,6 +11,7 @@ function h(tag, attrs, ...children) {
     if (key.startsWith('on')) el.addEventListener(key.slice(2), value);
     else if (key === 'class') el.className = value;
     else if (key === 'value') el.value = value;
+    else if (key === 'style') Object.assign(el.style, value);
     else el.setAttribute(key, value === true ? '' : value);
   }
   for (const child of children.flat()) {
@@ -88,7 +89,7 @@ function wholeNumber(text, label) {
 // --- Navigation ---
 
 const SCREENS = [
-  { id: 'dashboard', label: 'Tableau de bord', soon: true },
+  { id: 'dashboard', label: 'Tableau de bord', render: () => renderDashboard() },
   { id: 'invoices', label: 'Factures', render: () => renderInvoicesScreen() },
   { id: 'quotes', label: 'Devis', render: () => renderQuotesScreen() },
   { id: 'clients', label: 'Clients', render: renderClients },
@@ -96,7 +97,7 @@ const SCREENS = [
   { id: 'settings', label: 'Paramètres', render: renderSettings },
 ];
 
-const state = { quoteView: { mode: 'list', id: null }, quoteFilter: null, quoteSearch: '', invoiceView: { mode: 'list', id: null }, invoiceFilter: null, invoiceSearch: '', screen: 'clients', clientSearch: '', clientId: null, productSearch: '', productType: null };
+const state = { quoteView: { mode: 'list', id: null }, quoteFilter: null, quoteSearch: '', invoiceView: { mode: 'list', id: null }, invoiceFilter: null, invoiceSearch: '', screen: 'dashboard', clientSearch: '', clientId: null, productSearch: '', productType: null };
 
 function renderNav() {
   document.getElementById('nav').replaceChildren(...SCREENS.map((s) =>
@@ -325,7 +326,7 @@ async function renderProducts() {
         h('td', { class: 'muted' }, p.unit || '—'),
         h('td', { class: 'num strong' }, money(p.price_ht)),
         h('td', { class: 'num muted' }, percent(p.vat_rate)),
-        h('td', { class: 'num' }, h('div', { class: 'row', style: null },
+        h('td', { class: 'num' }, h('div', { class: 'row' },
           h('button', { type: 'button', class: 'btn small', 'aria-label': `Modifier ${p.name}`, onclick: () => editProduct(p) }, 'Modifier'),
           h('button', { type: 'button', class: 'btn small', 'aria-label': `Archiver ${p.name}`, onclick: () => archive(p) }, 'Archiver'))))))));
 
@@ -371,7 +372,6 @@ async function renderSettings() {
         error.scrollIntoView({ block: 'center' });
       }
     },
-    style: null,
   },
   error,
   h('section', { class: 'card narrow' },
@@ -416,5 +416,5 @@ async function renderSettings() {
 
 (async () => {
   await refreshBrand();
-  await go('clients');
+  await go('dashboard');
 })();
