@@ -55,6 +55,9 @@ function testSetting(name) {
   return app.isPackaged ? undefined : process.env[name];
 }
 
+// Dates et fenêtres du système affichées en français, quel que soit le réglage de Windows.
+app.commandLine.appendSwitch('lang', 'fr');
+
 let db;
 let dbPath;
 let licencePath;

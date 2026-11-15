@@ -1,0 +1,24 @@
+{
+  "appId": "com.facturation.generateur",
+  "productName": "Générateur de licences Facturation",
+  "directories": { "output": "dist-generateur" },
+  "files": [
+    "generateur/**/*",
+    "!generateur/builder.json",
+    "src/core/licence.js",
+    "src/core/licence-key.js",
+    "src/renderer/styles.css",
+    "package.json"
+  ],
+  "extraMetadata": { "main": "generateur/main.js", "name": "facturation-generateur" },
+  "asar": true,
+  "win": { "target": [{ "target": "portable", "arch": ["x64"] }] },
+  "portable": { "artifactName": "Generateur-de-licences-${version}.exe" },
+  "electronFuses": {
+    "runAsNode": false,
+    "enableNodeOptionsEnvironmentVariable": false,
+    "enableNodeCliInspectArguments": false,
+    "enableEmbeddedAsarIntegrityValidation": true,
+    "onlyLoadAppFromAsar": true
+  }
+}

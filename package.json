@@ -7,7 +7,9 @@
   "scripts": {
     "test": "node --no-warnings --test test/core.test.js",
     "start": "electron .",
-    "dist": "electron-builder --win --publish never"
+    "dist": "electron-builder --win --publish never",
+    "generateur": "electron generateur/main.js",
+    "dist:generateur": "electron-builder --win --config generateur/builder.json --publish never"
   },
   "engines": {
     "node": ">=22.5"

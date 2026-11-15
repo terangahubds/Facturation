@@ -46,5 +46,15 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
 
+      - name: Fabriquer le générateur de licences
+        run: npm run dist:generateur
+
+      - name: Publier le générateur de licences
+        uses: actions/upload-artifact@v4
+        with:
+          name: Generateur-de-licences
+          path: dist-generateur/*.exe
+          if-no-files-found: error
+
       - name: Vérifier que modifier le code empêche le démarrage
         run: node tools/verifier-protection.js dist/win-unpacked
