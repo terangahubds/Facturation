@@ -114,6 +114,8 @@ async function go(screen) {
   state.quoteView = { mode: 'list', id: null };
   renderNav();
   await refresh();
+  // Chaque écran s'ouvre en haut de page, quelle que soit la position de l'écran précédent.
+  document.getElementById('view').scrollTop = 0;
   document.getElementById('view').focus();
 }
 
