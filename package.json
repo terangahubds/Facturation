@@ -1,17 +1,63 @@
 {
   "name": "facturation",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Logiciel de facturation hors ligne pour Windows",
   "main": "src/main/main.js",
   "scripts": {
     "test": "node --no-warnings --test test/core.test.js",
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
   },
   "engines": {
     "node": ">=22.5"
   },
   "devDependencies": {
-    "electron": "^45.3.2"
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "author": "Facturation",
+  "build": {
+    "appId": "com.facturation.app",
+    "productName": "Facturation",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Facturation",
+      "deleteAppDataOnUninstall": false,
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "language": "1036",
+      "artifactName": "Installer-Facturation-${version}.exe"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "enableCookieEncryption": false
+    }
   }
 }

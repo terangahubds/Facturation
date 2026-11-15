@@ -49,6 +49,12 @@ const API = {
   duplicateQuote: quotes.duplicateQuote,
 };
 
+// Réglages réservés aux tests automatiques. Ils sont ignorés dans l'application installée :
+// sinon une simple variable d'environnement permettrait de figer la date de l'essai.
+function testSetting(name) {
+  return app.isPackaged ? undefined : process.env[name];
+}
+
 let db;
 let dbPath;
 let licencePath;
@@ -98,7 +104,7 @@ async function withDocument(kind, id, action) {
 // Enregistre le PDF à l'endroit choisi par l'utilisateur. Renvoie le chemin, ou null s'il annule.
 function exportPdf(parent, kind, id) {
   return withDocument(kind, id, async (win, inv) => {
-    let target = process.env.FACTURATION_PDF_PATH; // utilisé par les tests automatiques
+    let target = testSetting('FACTURATION_PDF_PATH'); // utilisé par les tests automatiques
     if (!target) {
       const choice = await dialog.showSaveDialog(parent, {
         title: 'Enregistrer le PDF',
@@ -182,7 +188,7 @@ function activateLicence(text) {
 }
 
 async function importLicenceFile(parent) {
-  let source = process.env.FACTURATION_LICENCE_FILE; // utilisé par les tests automatiques
+  let source = testSetting('FACTURATION_LICENCE_FILE'); // utilisé par les tests automatiques
   if (!source) {
     const choice = await dialog.showOpenDialog(parent, {
       title: 'Choisir le fichier de licence',
@@ -203,7 +209,7 @@ async function importLicenceFile(parent) {
 }
 
 function dateStamp() {
-  if (process.env.FACTURATION_TODAY) return process.env.FACTURATION_TODAY; // tests automatiques
+  if (testSetting('FACTURATION_TODAY')) return testSetting('FACTURATION_TODAY');
   const d = new Date();
   const two = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
@@ -211,7 +217,7 @@ function dateStamp() {
 
 // Sauvegarde : l'utilisateur choisit l'emplacement (sa clé USB). Renvoie le chemin, ou null s'il annule.
 async function backupDatabase(parent) {
-  let target = process.env.FACTURATION_BACKUP_PATH; // utilisé par les tests automatiques
+  let target = testSetting('FACTURATION_BACKUP_PATH'); // utilisé par les tests automatiques
   if (!target) {
     const choice = await dialog.showSaveDialog(parent, {
       title: 'Sauvegarder les données',
@@ -227,7 +233,7 @@ async function backupDatabase(parent) {
 
 // Restauration, étape 1 : choisir le fichier et afficher ce qu'il contient avant de confirmer.
 async function pickBackup(parent) {
-  let source = process.env.FACTURATION_RESTORE_PATH; // utilisé par les tests automatiques
+  let source = testSetting('FACTURATION_RESTORE_PATH'); // utilisé par les tests automatiques
   if (!source) {
     const choice = await dialog.showOpenDialog(parent, {
       title: 'Choisir une sauvegarde',
@@ -274,7 +280,7 @@ function restoreDatabase(source) {
 }
 
 app.whenReady().then(() => {
-  const dataDir = process.env.FACTURATION_DATA_DIR || app.getPath('userData');
+  const dataDir = testSetting('FACTURATION_DATA_DIR') || app.getPath('userData');
   fs.mkdirSync(dataDir, { recursive: true });
   dbPath = path.join(dataDir, 'facturation.sqlite');
   db = openDatabase(dbPath);

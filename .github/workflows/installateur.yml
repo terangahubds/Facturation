@@ -1,0 +1,50 @@
+name: Installateur Windows
+
+# Fabrique l'installateur sur une vraie machine Windows.
+# Se lance à chaque changement de main, à chaque étiquette de version (v1.0.0), ou à la main.
+on:
+  push:
+    branches: [main, installateur]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installateur:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Tests automatiques sous Windows
+        run: npm test
+
+      - name: Identifiant de l'ordinateur lisible sous Windows
+        shell: pwsh
+        run: |
+          $out = reg query "HKLM\SOFTWARE\Microsoft\Cryptography" /v MachineGuid | Out-String
+          if ($out -notmatch 'MachineGuid\s+REG_SZ\s+[0-9a-fA-F-]+') { Write-Error "MachineGuid illisible"; exit 1 }
+          Write-Host "MachineGuid lisible"
+
+      - name: Fabriquer l'installateur
+        run: npm run dist
+
+      - name: Publier l'installateur
+        uses: actions/upload-artifact@v4
+        with:
+          name: Installer-Facturation
+          path: dist/*.exe
+          if-no-files-found: error
+
+      - name: Vérifier que modifier le code empêche le démarrage
+        run: node tools/verifier-protection.js dist/win-unpacked

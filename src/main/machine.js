@@ -4,9 +4,12 @@
 const os = require('node:os');
 const fs = require('node:fs');
 const { execFileSync } = require('node:child_process');
+const { app } = require('electron');
 
 function rawMachineId() {
-  if (process.env.FACTURATION_MACHINE_ID) return process.env.FACTURATION_MACHINE_ID; // tests automatiques
+  // Réglage réservé aux tests automatiques : ignoré dans l'application installée, sinon il suffirait
+  // de donner le même identifiant à plusieurs ordinateurs pour partager une seule licence.
+  if (!app.isPackaged && process.env.FACTURATION_MACHINE_ID) return process.env.FACTURATION_MACHINE_ID;
   if (process.platform === 'win32') {
     // Identifiant créé par Windows à l'installation du système.
     try {
