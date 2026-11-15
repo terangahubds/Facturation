@@ -1,0 +1,6 @@
+node_modules/
+dist/
+out/
+*.sqlite
+*.sqlite-journal
+*.log
