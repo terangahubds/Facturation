@@ -4,7 +4,7 @@ name: Installateur Windows
 # Se lance à chaque changement de main, à chaque étiquette de version (v1.0.0), ou à la main.
 on:
   push:
-    branches: [main, installateur]
+    branches: [main]
     tags: ['v*']
   workflow_dispatch:
 
