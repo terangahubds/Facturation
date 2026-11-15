@@ -5,9 +5,13 @@
   "description": "Logiciel de facturation hors ligne pour Windows",
   "main": "src/main/main.js",
   "scripts": {
-    "test": "node --no-warnings --test test/core.test.js"
+    "test": "node --no-warnings --test test/core.test.js",
+    "start": "electron ."
   },
   "engines": {
     "node": ">=22.5"
+  },
+  "devDependencies": {
+    "electron": "^45.3.2"
   }
 }

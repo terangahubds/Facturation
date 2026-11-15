@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+<title>Facturation</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="sidebar" aria-label="Navigation principale">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">F</div>
+      <div>
+        <div class="brand-name">Facturation</div>
+        <div class="brand-company" id="brand-company"></div>
+      </div>
+    </div>
+    <div id="nav"></div>
+  </nav>
+  <main id="view" tabindex="-1"></main>
+</div>
+<dialog id="dialog"></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
