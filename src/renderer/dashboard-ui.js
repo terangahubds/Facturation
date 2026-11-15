@@ -50,7 +50,17 @@ function monthlyChart(months) {
 }
 
 async function renderDashboard() {
-  const [d, invoices, clients] = await Promise.all([call('getDashboard'), call('listInvoices'), call('listClients')]);
+  const [d, invoices, clients, settings] = await Promise.all([call('getDashboard'), call('listInvoices'), call('listClients'), call('getSettings')]);
+
+  // Rappel hebdomadaire : affiché s'il y a des données et que la dernière sauvegarde date de plus de 7 jours.
+  const last = settings.last_backup_at ? Date.parse(settings.last_backup_at) : null;
+  const daysSince = last === null ? null : Math.floor((Date.now() - last) / 86400000);
+  const reminder = settings.backup_reminder === '1' && invoices.length > 0 && (daysSince === null || daysSince >= 7)
+    && h('div', { class: 'banner', role: 'status' },
+      h('span', {}, daysSince === null
+        ? 'Vos données n\u2019ont encore jamais été sauvegardées.'
+        : `Votre dernière sauvegarde date de ${daysSince} jours.`),
+      h('button', { type: 'button', class: 'btn', onclick: async () => { if (await runBackup()) await refresh(); } }, 'Sauvegarder maintenant'));
   const recent = invoices.filter((r) => r.status === 'emise').slice(0, 5);
 
   const head = h('header', { class: 'page-head' },
@@ -79,6 +89,7 @@ async function renderDashboard() {
 
   return [
     head,
+    reminder,
     h('section', { class: 'tiles', 'aria-label': 'Chiffres clés' },
       statTile('Facturé ce mois', d.billed.total, d.billed.count ? plural(d.billed.count, 'facture émise', 'factures émises') : 'Aucune facture émise'),
       statTile('Encaissé ce mois', d.collected.total, d.collected.count ? plural(d.collected.count, 'paiement reçu', 'paiements reçus') : 'Aucun paiement reçu'),

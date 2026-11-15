@@ -7,6 +7,10 @@ const inv = require('../src/core/invoices');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../src/core/document');
 const quo = require('../src/core/quotes');
 const { getDashboard } = require('../src/core/dashboard');
+const { createBackup, inspectBackup } = require('../src/core/backup');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 function setup() {
   const db = openDatabase(':memory:');
@@ -26,6 +30,7 @@ test('paramètres par défaut pour le Sénégal', () => {
   assert.equal(s.currency, 'FCFA');
   assert.equal(s.default_vat_rate, '1800');
   assert.throws(() => cat.updateSettings(db, { next_invoice_seq: 50 }), /ne se modifie pas/);
+  assert.throws(() => cat.updateSettings(db, { last_backup_at: 'x' }), /ne se modifie pas/);
   assert.equal(cat.updateSettings(db, { company_name: 'Ma société' }).company_name, 'Ma société');
 });
 
@@ -239,4 +244,45 @@ test('tableau de bord : chiffres du mois, retards, série mensuelle', () => {
   // en janvier, la fenêtre de six mois chevauche deux années
   assert.deepEqual(getDashboard(db, { on: '2027-01-10' }).months.map((m) => `${m.label} ${m.year}`),
     ['Août 2026', 'Septembre 2026', 'Octobre 2026', 'Novembre 2026', 'Décembre 2026', 'Janvier 2027']);
+});
+
+test('sauvegarde : copie complète, relisible, fichiers invalides refusés', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'facturation-'));
+  try {
+    const db = openDatabase(path.join(dir, 'base.sqlite'));
+    cat.updateSettings(db, { company_name: 'Teranga Services' });
+    const client = cat.createClient(db, { name: 'Cabinet Diallo' });
+    inv.issueInvoice(db, inv.createDraft(db, { client_id: client.id, lines: LINES }).id, { issue_date: '2026-11-14' });
+    const target = path.join(dir, 'copie.sqlite');
+    fs.writeFileSync(target, 'ancien fichier'); // une sauvegarde précédente est remplacée
+    createBackup(db, target, { now: new Date('2026-11-15T10:00:00Z') });
+    assert.equal(cat.getSettings(db).last_backup_at, '2026-11-15T10:00:00.000Z');
+    const info = inspectBackup(target);
+    assert.equal(info.company_name, 'Teranga Services');
+    assert.equal(info.clients, 1);
+    assert.equal(info.invoices, 1);
+    assert.equal(info.last_invoice_date, '2026-11-14');
+
+    // la copie est une base complète : elle s'ouvre et contient la facture
+    cat.createClient(db, { name: 'Ajouté après la sauvegarde' });
+    db.close();
+    const restored = openDatabase(target);
+    assert.equal(cat.listClients(restored).length, 1);
+    assert.equal(inv.listInvoices(restored)[0].number, 'FAC-2026-0001');
+    restored.close();
+
+    const junk = path.join(dir, 'photo.jpg');
+    fs.writeFileSync(junk, 'ceci n\u2019est pas une base');
+    assert.throws(() => inspectBackup(junk), /pas une sauvegarde valide/);
+    const { DatabaseSync } = require('node:sqlite');
+    const other = new DatabaseSync(path.join(dir, 'autre.sqlite'));
+    other.exec('CREATE TABLE t (x)'); other.close();
+    assert.throws(() => inspectBackup(path.join(dir, 'autre.sqlite')), /pas une sauvegarde valide/);
+    const future = new DatabaseSync(target);
+    future.exec('PRAGMA user_version = 99'); future.close();
+    assert.throws(() => inspectBackup(target), /version plus récente/);
+    assert.throws(() => inspectBackup(path.join(dir, 'absent.sqlite')), /pas une sauvegarde valide/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

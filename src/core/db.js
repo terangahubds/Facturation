@@ -185,6 +185,8 @@ const DEFAULT_SETTINGS = {
   quote_prefix: 'DEV',
   next_quote_seq: '1',
   quote_validity_days: '30',
+  last_backup_at: '',
+  backup_reminder: '1',
 };
 
 function openDatabase(path) {
@@ -215,4 +217,4 @@ function transaction(db, fn) {
   }
 }
 
-module.exports = { openDatabase, transaction, DEFAULT_SETTINGS };
+module.exports = { openDatabase, transaction, DEFAULT_SETTINGS, SCHEMA_VERSION: MIGRATIONS.length };

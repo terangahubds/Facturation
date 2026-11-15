@@ -11,6 +11,7 @@ const catalog = require('../core/catalog');
 const invoices = require('../core/invoices');
 const quotes = require('../core/quotes');
 const { getDashboard } = require('../core/dashboard');
+const { createBackup, inspectBackup } = require('../core/backup');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
 
 const API = {
@@ -46,6 +47,7 @@ const API = {
 };
 
 let db;
+let dbPath;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -122,10 +124,73 @@ function printDocument(kind, id) {
   }));
 }
 
+function dateStamp() {
+  const d = new Date();
+  const two = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+}
+
+// Sauvegarde : l'utilisateur choisit l'emplacement (sa clé USB). Renvoie le chemin, ou null s'il annule.
+async function backupDatabase(parent) {
+  let target = process.env.FACTURATION_BACKUP_PATH; // utilisé par les tests automatiques
+  if (!target) {
+    const choice = await dialog.showSaveDialog(parent, {
+      title: 'Sauvegarder les données',
+      defaultPath: path.join(app.getPath('documents'), `sauvegarde-facturation-${dateStamp()}.sauvegarde`),
+      filters: [{ name: 'Sauvegarde Facturation', extensions: ['sauvegarde'] }],
+    });
+    if (choice.canceled || !choice.filePath) return null;
+    target = choice.filePath;
+  }
+  if (path.resolve(target) === path.resolve(dbPath)) throw new Error('Choisissez un autre emplacement que le dossier de l\u2019application.');
+  return createBackup(db, target);
+}
+
+// Restauration, étape 1 : choisir le fichier et afficher ce qu'il contient avant de confirmer.
+async function pickBackup(parent) {
+  let source = process.env.FACTURATION_RESTORE_PATH; // utilisé par les tests automatiques
+  if (!source) {
+    const choice = await dialog.showOpenDialog(parent, {
+      title: 'Choisir une sauvegarde',
+      properties: ['openFile'],
+      filters: [{ name: 'Sauvegarde Facturation', extensions: ['sauvegarde'] }, { name: 'Tous les fichiers', extensions: ['*'] }],
+    });
+    if (choice.canceled || choice.filePaths.length === 0) return null;
+    source = choice.filePaths[0];
+  }
+  return { path: source, info: inspectBackup(source) };
+}
+
+// Restauration, étape 2 : remplace la base par la sauvegarde. Les données actuelles sont d'abord
+// copiées à côté de la base ; si la sauvegarde ne s'ouvre pas, elles sont remises en place.
+function restoreDatabase(source) {
+  if (path.resolve(source) === path.resolve(dbPath)) throw new Error('Ce fichier est la base en cours d\u2019utilisation.');
+  inspectBackup(source);
+  const safety = path.join(path.dirname(dbPath), 'avant-restauration.sqlite');
+  fs.rmSync(safety, { force: true });
+  db.prepare('VACUUM INTO ?').run(safety);
+  db.close();
+  const clearSidecars = () => { for (const ext of ['-wal', '-shm']) fs.rmSync(dbPath + ext, { force: true }); };
+  try {
+    clearSidecars();
+    fs.copyFileSync(source, dbPath);
+    db = openDatabase(dbPath);
+    // Les données restaurées sont identiques à la sauvegarde : sa date devient celle de la dernière sauvegarde.
+    db.prepare(`UPDATE settings SET value = ? WHERE key = 'last_backup_at'`).run(fs.statSync(source).mtime.toISOString());
+  } catch (err) {
+    clearSidecars();
+    fs.copyFileSync(safety, dbPath);
+    db = openDatabase(dbPath);
+    throw new Error('La restauration a échoué. Vos données actuelles ont été conservées.');
+  }
+  return true;
+}
+
 app.whenReady().then(() => {
   const dataDir = process.env.FACTURATION_DATA_DIR || app.getPath('userData');
   fs.mkdirSync(dataDir, { recursive: true });
-  db = openDatabase(path.join(dataDir, 'facturation.sqlite'));
+  dbPath = path.join(dataDir, 'facturation.sqlite');
+  db = openDatabase(dbPath);
 
   ipcMain.handle('api', (_event, name, ...args) => {
     if (!Object.hasOwn(API, name)) throw new Error(`Opération inconnue : ${name}`);
@@ -134,6 +199,9 @@ app.whenReady().then(() => {
 
   ipcMain.handle('exportPdf', (event, kind, id) => exportPdf(BrowserWindow.fromWebContents(event.sender), kind, id));
   ipcMain.handle('printDocument', (_event, kind, id) => printDocument(kind, id));
+  ipcMain.handle('backupDatabase', (event) => backupDatabase(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle('pickBackup', (event) => pickBackup(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle('restoreDatabase', (_event, source) => restoreDatabase(source));
   ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));
 
   Menu.setApplicationMenu(null);

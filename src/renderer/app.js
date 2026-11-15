@@ -121,7 +121,7 @@ async function refresh() {
   const view = document.getElementById('view');
   const screen = SCREENS.find((s) => s.id === state.screen);
   try {
-    view.replaceChildren(...await screen.render());
+    view.replaceChildren(...(await screen.render()).filter(Boolean));
   } catch (err) {
     view.replaceChildren(h('div', { class: 'error', role: 'alert' }, err.message));
   }
@@ -358,6 +358,7 @@ async function renderSettings() {
       try {
         const v = Object.fromEntries(new FormData(form));
         delete v.next_number;
+        v.backup_reminder = form.querySelector('#f-backup_reminder').checked ? '1' : '0';
         v.default_vat_rate = Math.round(wholeNumber(v.default_vat_rate, 'TVA par défaut') * 100);
         v.default_payment_days = Math.round(wholeNumber(v.default_payment_days, 'Délai de paiement'));
         v.quote_validity_days = Math.round(wholeNumber(v.quote_validity_days, 'Validité des devis'));
@@ -398,7 +399,8 @@ async function renderSettings() {
   h('section', { class: 'card narrow' },
     h('h2', {}, 'Paiement et mentions'),
     field('Coordonnées de paiement', 'payment_details', s.payment_details, { multiline: true, hint: 'Compte bancaire, Wave, Orange Money…' }),
-    field('Mentions légales en pied de facture', 'legal_footer', s.legal_footer, { multiline: true })));
+    field('Mentions légales en pied de facture', 'legal_footer', s.legal_footer, { multiline: true })),
+  backupSection(s));
 
   form.style.display = 'flex';
   form.style.flexDirection = 'column';
@@ -410,6 +412,76 @@ async function renderSettings() {
       h('button', { type: 'submit', form: 'settings-form', class: 'btn primary' }, 'Enregistrer')),
     form,
   ];
+}
+
+// --- Sauvegarde ---
+
+const cleanIpcError = (err) => String(err.message).replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+
+function formatDateTime(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+async function runBackup() {
+  try {
+    const filePath = await window.api.backupDatabase();
+    if (!filePath) return false;
+    toast('Sauvegarde terminée.');
+    document.getElementById('toast').append(' ',
+      h('button', { type: 'button', class: 'toast-action', onclick: () => window.api.showFile(filePath) }, 'Ouvrir le dossier'));
+    return true;
+  } catch (err) {
+    toast(cleanIpcError(err));
+    return false;
+  }
+}
+
+async function runRestore() {
+  let picked;
+  try {
+    picked = await window.api.pickBackup();
+  } catch (err) {
+    toast(cleanIpcError(err));
+    return;
+  }
+  if (!picked) return;
+  const { info } = picked;
+  openForm({
+    title: 'Restaurer cette sauvegarde ?',
+    submitLabel: 'Remplacer mes données',
+    fields: [
+      h('dl', { class: 'facts' },
+        h('dt', {}, 'Entreprise'), h('dd', {}, info.company_name || '—'),
+        h('dt', {}, 'Sauvegarde du'), h('dd', {}, formatDateTime(info.modified_at)),
+        h('dt', {}, 'Clients'), h('dd', {}, info.clients),
+        h('dt', {}, 'Factures émises'), h('dd', {}, info.invoices)),
+      h('p', { class: 'error' }, 'Toutes les données actuelles de ce poste seront remplacées par celles de la sauvegarde. Ce qui a été saisi depuis cette sauvegarde sera perdu.'),
+    ],
+    onSubmit: async () => {
+      try {
+        await window.api.restoreDatabase(picked.path);
+      } catch (err) {
+        throw new Error(cleanIpcError(err));
+      }
+      await refreshBrand();
+      toast('Sauvegarde restaurée.');
+      await go('dashboard');
+    },
+  });
+}
+
+function backupSection(s) {
+  return h('section', { class: 'card narrow' },
+    h('h2', {}, 'Sauvegarde des données'),
+    h('p', { class: 'muted' }, 'Vos données sont enregistrées sur cet ordinateur et fonctionnent sans Internet. Copiez-les régulièrement sur une clé USB pour ne rien perdre en cas de panne.'),
+    h('p', { id: 'last-backup' }, s.last_backup_at ? `Dernière sauvegarde : ${formatDateTime(s.last_backup_at)}` : 'Aucune sauvegarde n\u2019a encore été faite.'),
+    h('div', { class: 'row' },
+      h('button', { type: 'button', class: 'btn primary', onclick: async () => { if (await runBackup()) { const fresh = await call('getSettings'); document.getElementById('last-backup').textContent = `Dernière sauvegarde : ${formatDateTime(fresh.last_backup_at)}`; } } }, 'Sauvegarder sur une clé USB'),
+      h('button', { type: 'button', class: 'btn', onclick: runRestore }, 'Restaurer une sauvegarde')),
+    h('label', { class: 'check' },
+      h('input', { type: 'checkbox', id: 'f-backup_reminder', checked: s.backup_reminder === '1' }),
+      'Me rappeler de sauvegarder chaque semaine'));
 }
 
 // --- Démarrage ---

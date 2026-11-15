@@ -4,7 +4,7 @@
 const { DEFAULT_SETTINGS } = require('./db');
 
 // Ces compteurs ne se modifient jamais à la main : la numérotation doit rester continue.
-const PROTECTED_SETTINGS = new Set(['next_invoice_seq', 'next_credit_seq', 'next_quote_seq']);
+const PROTECTED_SETTINGS = new Set(['next_invoice_seq', 'next_credit_seq', 'next_quote_seq', 'last_backup_at']);
 
 function getSettings(db) {
   const out = {};
@@ -16,7 +16,7 @@ function updateSettings(db, changes) {
   const stmt = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
   for (const [key, value] of Object.entries(changes)) {
     if (!(key in DEFAULT_SETTINGS)) throw new Error(`Paramètre inconnu : ${key}`);
-    if (PROTECTED_SETTINGS.has(key)) throw new Error('Le prochain numéro ne se modifie pas à la main.');
+    if (PROTECTED_SETTINGS.has(key)) throw new Error('Ce paramètre ne se modifie pas à la main.');
     stmt.run(String(value), key);
   }
   return getSettings(db);
