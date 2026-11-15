@@ -41,10 +41,37 @@ function licenceInstaller(error, onDone) {
   ];
 }
 
+const daysLeftText = (n) => (n > 1 ? `il reste ${n} jours` : 'dernier jour');
+
+// Encadré du menu latéral pendant la période d'essai.
+async function refreshTrialBox() {
+  const lic = await window.api.getLicence();
+  const box = document.getElementById('trial-box');
+  if (lic.status === 'valide' || !lic.trial || !lic.trial.active) {
+    box.replaceChildren();
+    return;
+  }
+  box.replaceChildren(h('div', { class: 'trial', role: 'status' },
+    h('strong', {}, 'Période d\u2019essai'),
+    h('span', { id: 'trial-left' }, `${daysLeftText(lic.trial.days_left).replace(/^./, (c) => c.toUpperCase())}, jusqu\u2019au ${formatIsoDate(lic.trial.ends)} inclus`),
+    h('button', {
+      type: 'button', class: 'btn small',
+      onclick: async () => {
+        await go('settings');
+        const card = document.getElementById('licence-card');
+        card.querySelector('details').open = true;
+        card.scrollIntoView({ block: 'start' });
+      },
+    }, 'Activer le logiciel')));
+}
+
 function renderActivation(lic, onActivated) {
   document.body.classList.add('locked');
   const error = h('div', { class: 'error', role: 'alert' });
-  const problem = lic.status !== 'absente' && h('div', { class: 'error' }, lic.message);
+  const trialOver = lic.trial && !lic.trial.active;
+  const reason = lic.status !== 'absente' ? lic.message
+    : trialOver ? `La période d\u2019essai de ${lic.trial.days} jours est terminée. Vos données sont conservées : elles seront de nouveau accessibles dès l\u2019activation.` : '';
+  const problem = reason && h('div', { class: 'error' }, reason);
   document.getElementById('view').replaceChildren(
     h('div', { class: 'activation' },
       h('h1', {}, 'Activer le logiciel'),
@@ -63,6 +90,10 @@ function renderActivation(lic, onActivated) {
           toast('Logiciel activé.');
           await onActivated();
         })),
+      h('section', { class: 'card' },
+        h('h2', {}, 'Récupérer vos données'),
+        h('p', { class: 'muted' }, 'Même sans licence, vous pouvez copier toutes vos données dans un fichier de sauvegarde.'),
+        h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn', onclick: runBackup }, 'Sauvegarder mes données'))),
       h('p', { class: 'muted small' }, `Version ${lic.version}`)));
 }
 
@@ -71,8 +102,10 @@ async function licenceSection() {
   const error = h('div', { class: 'error', role: 'alert' });
   const status = lic.status === 'valide'
     ? (lic.expires ? `Valide jusqu’au ${formatIsoDate(lic.expires)}` : 'Valide, sans date de fin')
-    : lic.enforced ? lic.message : 'Non exigée en mode développement';
-  return h('section', { class: 'card narrow' },
+    : !lic.enforced ? 'Non exigée en mode développement'
+      : lic.trial && lic.trial.active && lic.status === 'absente' ? `Période d\u2019essai : ${daysLeftText(lic.trial.days_left)}, jusqu\u2019au ${formatIsoDate(lic.trial.ends)} inclus`
+        : lic.message;
+  return h('section', { class: 'card narrow', id: 'licence-card' },
     h('h2', {}, 'Licence'),
     h('dl', { class: 'facts' },
       h('dt', {}, 'Titulaire'), h('dd', {}, lic.status === 'valide' ? lic.name : '—'),
@@ -81,7 +114,7 @@ async function licenceSection() {
       h('dt', {}, 'Version'), h('dd', {}, lic.version)),
     error,
     h('details', {},
-      h('summary', {}, 'Installer une autre licence'),
+      h('summary', {}, lic.status === 'valide' ? 'Installer une autre licence' : 'Installer une licence'),
       h('div', { class: 'stack details-body' },
-        licenceInstaller(error, async () => { toast('Licence installée.'); await refresh(); }))));
+        licenceInstaller(error, async () => { toast('Licence installée.'); await refreshTrialBox(); await refresh(); }))));
 }

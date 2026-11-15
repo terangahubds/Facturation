@@ -12,7 +12,7 @@ const invoices = require('../core/invoices');
 const quotes = require('../core/quotes');
 const { getDashboard } = require('../core/dashboard');
 const { createBackup, inspectBackup } = require('../core/backup');
-const { machineCode, checkLicence } = require('../core/licence');
+const { machineCode, checkLicence, trialState } = require('../core/licence');
 const LICENCE_PUBLIC_KEY = require('../core/licence-key');
 const { rawMachineId } = require('./machine');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
@@ -135,11 +135,41 @@ function licenceEnforced() {
   return app.isPackaged || process.env.FACTURATION_ENFORCE_LICENCE === '1';
 }
 
+const TRIAL_DAYS = 30;
+
+// Période d'essai : elle démarre au premier lancement sans licence. Sa date de début est
+// enregistrée avec les données, donc l'effacer pour recommencer l'essai efface aussi les factures.
+// La dernière date vue est mémorisée pour que reculer l'horloge ne rallonge pas l'essai.
+function trialInfo() {
+  const s = catalog.getSettings(db);
+  const today = dateStamp();
+  const set = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
+  let start = s.trial_started_at;
+  if (!start) {
+    start = today;
+    set.run(start, 'trial_started_at');
+  }
+  const now = s.trial_last_seen > today ? s.trial_last_seen : today;
+  if (now !== s.trial_last_seen) set.run(now, 'trial_last_seen');
+  return trialState(start, now, TRIAL_DAYS);
+}
+
 function readLicence() {
   let text = '';
   try { text = fs.readFileSync(licencePath, 'utf8'); } catch (err) { /* pas encore de licence */ }
   const code = machineCode(rawMachineId());
-  licence = { ...checkLicence(text, code, LICENCE_PUBLIC_KEY, dateStamp()), machine_code: code, enforced: licenceEnforced(), version: app.getVersion() };
+  const enforced = licenceEnforced();
+  const result = checkLicence(text, code, LICENCE_PUBLIC_KEY, dateStamp());
+  const trial = enforced && result.status !== 'valide' ? trialInfo() : null;
+  licence = {
+    ...result,
+    machine_code: code,
+    enforced,
+    trial,
+    // usable : le logiciel peut être utilisé (licence valide, essai en cours, ou mode développement).
+    usable: !enforced || result.status === 'valide' || Boolean(trial && trial.active),
+    version: app.getVersion(),
+  };
   return licence;
 }
 
@@ -173,6 +203,7 @@ async function importLicenceFile(parent) {
 }
 
 function dateStamp() {
+  if (process.env.FACTURATION_TODAY) return process.env.FACTURATION_TODAY; // tests automatiques
   const d = new Date();
   const two = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
@@ -217,6 +248,7 @@ function restoreDatabase(source) {
   const safety = path.join(path.dirname(dbPath), 'avant-restauration.sqlite');
   fs.rmSync(safety, { force: true });
   db.prepare('VACUUM INTO ?').run(safety);
+  const trialBefore = catalog.getSettings(db);
   db.close();
   const clearSidecars = () => { for (const ext of ['-wal', '-shm']) fs.rmSync(dbPath + ext, { force: true }); };
   try {
@@ -225,6 +257,13 @@ function restoreDatabase(source) {
     db = openDatabase(dbPath);
     // Les données restaurées sont identiques à la sauvegarde : sa date devient celle de la dernière sauvegarde.
     db.prepare(`UPDATE settings SET value = ? WHERE key = 'last_backup_at'`).run(fs.statSync(source).mtime.toISOString());
+    // Restaurer une sauvegarde ne rallonge pas la période d'essai : on garde la date de début la plus ancienne.
+    const restored = catalog.getSettings(db);
+    const set = db.prepare('UPDATE settings SET value = ? WHERE key = ?');
+    if (trialBefore.trial_started_at && (!restored.trial_started_at || restored.trial_started_at > trialBefore.trial_started_at)) {
+      set.run(trialBefore.trial_started_at, 'trial_started_at');
+    }
+    if (trialBefore.trial_last_seen > restored.trial_last_seen) set.run(trialBefore.trial_last_seen, 'trial_last_seen');
   } catch (err) {
     clearSidecars();
     fs.copyFileSync(safety, dbPath);
@@ -245,7 +284,7 @@ app.whenReady().then(() => {
 
   // Sans licence valide, aucune opération sur les données n'est acceptée, même en contournant l'écran d'activation.
   const requireLicence = () => {
-    if (licence.enforced && readLicence().status !== 'valide') throw new Error('Une licence valide est nécessaire pour utiliser le logiciel.');
+    if (!readLicence().usable) throw new Error('La période d\u2019essai est terminée. Une licence est nécessaire pour utiliser le logiciel.');
   };
 
   ipcMain.handle('getLicence', () => readLicence());
@@ -260,7 +299,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('exportPdf', (event, kind, id) => { requireLicence(); return exportPdf(BrowserWindow.fromWebContents(event.sender), kind, id); });
   ipcMain.handle('printDocument', (_event, kind, id) => { requireLicence(); return printDocument(kind, id); });
-  ipcMain.handle('backupDatabase', (event) => { requireLicence(); return backupDatabase(BrowserWindow.fromWebContents(event.sender)); });
+  // La sauvegarde reste possible sans licence : le client peut toujours récupérer ses données.
+  ipcMain.handle('backupDatabase', (event) => backupDatabase(BrowserWindow.fromWebContents(event.sender)));
   ipcMain.handle('pickBackup', (event) => { requireLicence(); return pickBackup(BrowserWindow.fromWebContents(event.sender)); });
   ipcMain.handle('restoreDatabase', (_event, source) => { requireLicence(); return restoreDatabase(source); });
   ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));

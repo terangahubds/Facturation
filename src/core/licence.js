@@ -62,6 +62,16 @@ function checkLicence(text, code, publicKeyPem, today) {
   return { status: 'valide', message: '', ...details };
 }
 
+// Période d'essai : start et today au format AAAA-MM-JJ. Renvoie les jours restants.
+// Une date de début située dans le futur (horloge reculée) termine l'essai.
+function trialState(start, today, days = 30) {
+  const used = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86400000);
+  // ends : dernier jour d'utilisation possible.
+  const end = new Date(Date.parse(`${start}T00:00:00Z`) + (days - 1) * 86400000).toISOString().slice(0, 10);
+  const left = used < 0 ? 0 : Math.max(days - used, 0);
+  return { active: left > 0, days_left: left, days, started: start, ends: end };
+}
+
 function generateKeyPair() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519');
   return {
@@ -70,4 +80,4 @@ function generateKeyPair() {
   };
 }
 
-module.exports = { machineCode, normalizeCode, createLicence, checkLicence, generateKeyPair };
+module.exports = { machineCode, normalizeCode, createLicence, checkLicence, trialState, generateKeyPair };

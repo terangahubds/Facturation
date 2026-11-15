@@ -181,3 +181,6 @@ body.locked .sidebar { display: none; }
 .machine-code { padding: 10px 16px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--ground); font: 600 22px/1.2 Consolas, "Courier New", monospace; letter-spacing: 1px; user-select: all; }
 details summary { min-height: 44px; display: flex; align-items: center; color: var(--accent-ink); font-weight: 600; cursor: pointer; }
 .details-body { padding-top: 8px; }
+.sidebar #trial-box { margin-top: auto; padding-top: 16px; }
+.trial { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: #E6EDFC; color: #1B45A8; font-size: 13px; }
+.trial .btn { align-self: flex-start; margin-top: 4px; }

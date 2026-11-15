@@ -491,11 +491,12 @@ function backupSection(s) {
 
 async function startApp() {
   await refreshBrand();
+  await refreshTrialBox();
   await go('dashboard');
 }
 
 (async () => {
   const lic = await window.api.getLicence();
-  if (lic.enforced && lic.status !== 'valide') renderActivation(lic, startApp);
-  else await startApp();
+  if (lic.usable) await startApp();
+  else renderActivation(lic, startApp);
 })();

@@ -320,3 +320,13 @@ test('licence : signature, autre ordinateur, expiration, falsification', () => {
   assert.match(expired.message, /31\/12\/2026/);
   assert.throws(() => lic.createLicence({ machine: code, name: ' ', issued: '2026-11-15' }, keys.privateKey), /titulaire/);
 });
+
+test('période d\u2019essai : décompte, fin, horloge reculée', () => {
+  assert.deepEqual(lic.trialState('2026-11-15', '2026-11-15'), { active: true, days_left: 30, days: 30, started: '2026-11-15', ends: '2026-12-14' });
+  assert.equal(lic.trialState('2026-11-15', '2026-12-14').days_left, 1);
+  assert.equal(lic.trialState('2026-11-15', '2026-12-15').active, false);
+  assert.equal(lic.trialState('2026-11-15', '2027-03-01').days_left, 0);
+  assert.equal(lic.trialState('2026-11-15', '2026-11-01').active, false); // date de début dans le futur
+  const { db } = setup();
+  assert.throws(() => cat.updateSettings(db, { trial_started_at: '2030-01-01' }), /ne se modifie pas/);
+});
