@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('api', {
   getLicence: () => ipcRenderer.invoke('getLicence'),
   activateLicence: (text) => ipcRenderer.invoke('activateLicence', text),
   importLicenceFile: () => ipcRenderer.invoke('importLicenceFile'),
+  chooseLogo: () => ipcRenderer.invoke('chooseLogo'),
   showFile: (filePath) => ipcRenderer.invoke('showFile', filePath),
 });

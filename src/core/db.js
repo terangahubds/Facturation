@@ -187,6 +187,8 @@ const DEFAULT_SETTINGS = {
   quote_validity_days: '30',
   last_backup_at: '',
   backup_reminder: '1',
+  company_logo: '',
+  theme: 'vert',
   trial_started_at: '',
   trial_last_seen: '',
 };

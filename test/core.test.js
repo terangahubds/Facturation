@@ -9,6 +9,7 @@ const quo = require('../src/core/quotes');
 const { getDashboard } = require('../src/core/dashboard');
 const { createBackup, inspectBackup } = require('../src/core/backup');
 const lic = require('../src/core/licence');
+const theme = require('../src/core/theme');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -329,4 +330,28 @@ test('période d\u2019essai : décompte, fin, horloge reculée', () => {
   assert.equal(lic.trialState('2026-11-15', '2026-11-01').active, false); // date de début dans le futur
   const { db } = setup();
   assert.throws(() => cat.updateSettings(db, { trial_started_at: '2030-01-01' }), /ne se modifie pas/);
+});
+
+test('logo et couleur : validation, présence sur le document', () => {
+  const { db, client } = setup();
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(40, 1)]);
+  const logo = theme.logoFromFile(png);
+  assert.match(logo, /^data:image\/png;base64,/);
+  assert.match(theme.logoFromFile(Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])), /^data:image\/jpeg;base64,/);
+  assert.throws(() => theme.logoFromFile(Buffer.from('<svg onload="alert(1)">')), /PNG ou JPEG/);
+  assert.throws(() => theme.logoFromFile(Buffer.alloc(1024 * 1024 + 1, 1)), /trop lourd/);
+  assert.throws(() => cat.updateSettings(db, { company_logo: 'data:text/html;base64,PHNjcmlwdD4=' }), /image valide/);
+  assert.throws(() => cat.updateSettings(db, { company_logo: 'javascript:alert(1)' }), /image valide/);
+  assert.throws(() => cat.updateSettings(db, { theme: 'rose-fluo' }), /Couleur inconnue/);
+
+  const f = inv.issueInvoice(db, inv.createDraft(db, { client_id: client.id, lines: LINES }).id, { issue_date: '2026-11-14' });
+  const plain = buildInvoiceHtml(f, cat.getSettings(db));
+  assert.ok(!plain.includes('<img'));
+  assert.ok(plain.includes('#0E6B5B')); // vert par défaut
+  cat.updateSettings(db, { company_logo: logo, theme: 'bleu' });
+  const branded = buildInvoiceHtml(f, cat.getSettings(db));
+  assert.ok(branded.includes(`<img class="logo" src="${logo}"`));
+  assert.ok(branded.includes('#1B4FA8'));
+  assert.ok(!branded.includes('#0E6B5B'));
+  assert.equal(cat.updateSettings(db, { company_logo: '' }).company_logo, ''); // retirer le logo
 });

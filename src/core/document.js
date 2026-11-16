@@ -1,4 +1,5 @@
 'use strict';
+const { themeOf, isValidLogo } = require('./theme');
 // Construit la page A4 d'une facture ou d'un avoir, utilisée pour le PDF et l'impression.
 // Tout texte saisi par l'utilisateur est échappé avant d'être inséré.
 
@@ -19,7 +20,7 @@ function longDate(iso) {
 
 const lines = (...parts) => parts.filter(Boolean).map((p) => `<div>${p}</div>`).join('');
 
-const STYLE = `
+const styleFor = (theme) => `
   @page { size: A4; margin: 18mm 16mm; }
   * { box-sizing: border-box; }
   body { margin: 0; color: #131722; font: 10.5pt/1.45 "Segoe UI", system-ui, sans-serif; }
@@ -28,13 +29,14 @@ const STYLE = `
   .head { display: flex; justify-content: space-between; gap: 12mm; }
   .head .right { text-align: right; }
   .company { font-size: 13pt; font-weight: 600; }
-  .title { font-size: 22pt; font-weight: 600; line-height: 1.1; margin-bottom: 2mm; }
+  .title { font-size: 22pt; font-weight: 600; line-height: 1.1; margin-bottom: 2mm; color: ${theme.accent}; }
+  .logo { display: block; max-height: 22mm; max-width: 60mm; margin-bottom: 3mm; }
   .to { margin: 12mm 0 10mm; }
   .to .label { font-size: 9pt; color: #586172; }
   .to .name { font-weight: 600; }
   table { width: 100%; border-collapse: collapse; }
   thead { display: table-header-group; }
-  th { padding: 2.5mm 2mm; border-bottom: 1px solid #131722; color: #586172; font-size: 9pt; font-weight: 500; text-align: left; }
+  th { padding: 2.5mm 2mm; border-bottom: 1.5px solid ${theme.accent}; color: #586172; font-size: 9pt; font-weight: 500; text-align: left; }
   td { padding: 3mm 2mm; border-bottom: 1px solid #E3E6EB; vertical-align: top; }
   th:first-child, td:first-child { padding-left: 0; }
   th:last-child, td:last-child { padding-right: 0; }
@@ -42,7 +44,7 @@ const STYLE = `
   tr { break-inside: avoid; }
   .totals { margin: 8mm 0 0 auto; width: 78mm; break-inside: avoid; }
   .totals div { display: flex; justify-content: space-between; padding: 1.2mm 0; }
-  .totals .ttc { margin-top: 1.5mm; padding-top: 3mm; border-top: 1px solid #131722; font-size: 14pt; font-weight: 600; }
+  .totals .ttc { margin-top: 1.5mm; padding-top: 3mm; border-top: 1.5px solid ${theme.accent}; font-size: 14pt; font-weight: 600; }
   .foot { margin-top: 12mm; padding-top: 4mm; border-top: 1px solid #E3E6EB; font-size: 9pt; color: #586172; break-inside: avoid; }
   .foot div + div { margin-top: 2mm; }
 `;
@@ -63,10 +65,11 @@ function renderDocument({ title, doc, settings, meta, toLabel, footParts }) {
   const foot = lines(...footParts.map((text) => text && `<span class="pre">${esc(text)}</span>`));
 
   return `<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><title>${esc(doc.number)}</title><style>${STYLE}</style></head>
+<html lang="fr"><head><meta charset="utf-8"><title>${esc(doc.number)}</title><style>${styleFor(themeOf(s.theme))}</style></head>
 <body>
   <div class="head">
     <div>
+      ${isValidLogo(s.company_logo) ? `<img class="logo" src="${s.company_logo}" alt="">` : ''}
       <div class="company">${esc(s.company_name)}</div>
       ${lines(s.company_address && `<span class="muted pre">${esc(s.company_address)}</span>`,
     ids && `<span class="muted">${ids}</span>`,

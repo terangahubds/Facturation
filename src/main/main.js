@@ -13,11 +13,13 @@ const quotes = require('../core/quotes');
 const { getDashboard } = require('../core/dashboard');
 const { createBackup, inspectBackup } = require('../core/backup');
 const { machineCode, checkLicence, trialState } = require('../core/licence');
+const { THEMES, logoFromFile } = require('../core/theme');
 const LICENCE_PUBLIC_KEY = require('../core/licence-key');
 const { rawMachineId } = require('./machine');
 const { buildInvoiceHtml, buildQuoteHtml } = require('../core/document');
 
 const API = {
+  getThemes: () => THEMES,
   getDashboard: (database) => getDashboard(database),
   getSettings: catalog.getSettings,
   updateSettings: catalog.updateSettings,
@@ -211,6 +213,27 @@ async function importLicenceFile(parent) {
   return activateLicence(text);
 }
 
+// Logo de l'entreprise : l'utilisateur choisit une image, elle est vérifiée puis enregistrée avec les données.
+async function chooseLogo(parent) {
+  let source = testSetting('FACTURATION_LOGO_FILE');
+  if (!source) {
+    const choice = await dialog.showOpenDialog(parent, {
+      title: 'Choisir le logo de votre entreprise',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg'] }],
+    });
+    if (choice.canceled || choice.filePaths.length === 0) return null;
+    source = choice.filePaths[0];
+  }
+  let buffer;
+  try {
+    buffer = fs.readFileSync(source);
+  } catch (err) {
+    throw new Error('Impossible de lire ce fichier.');
+  }
+  return catalog.updateSettings(db, { company_logo: logoFromFile(buffer) });
+}
+
 function dateStamp() {
   if (testSetting('FACTURATION_TODAY')) return testSetting('FACTURATION_TODAY');
   const d = new Date();
@@ -312,6 +335,7 @@ app.whenReady().then(() => {
   ipcMain.handle('backupDatabase', (event) => backupDatabase(BrowserWindow.fromWebContents(event.sender)));
   ipcMain.handle('pickBackup', (event) => { requireLicence(); return pickBackup(BrowserWindow.fromWebContents(event.sender)); });
   ipcMain.handle('restoreDatabase', (_event, source) => { requireLicence(); return restoreDatabase(source); });
+  ipcMain.handle('chooseLogo', (event) => { requireLicence(); return chooseLogo(BrowserWindow.fromWebContents(event.sender)); });
   ipcMain.handle('showFile', (_event, filePath) => shell.showItemInFolder(filePath));
 
   Menu.setApplicationMenu(null);

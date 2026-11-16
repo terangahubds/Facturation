@@ -2,6 +2,7 @@
 // Paramètres, clients et produits : les données dont une facture a besoin.
 
 const { DEFAULT_SETTINGS } = require('./db');
+const { THEMES, isValidLogo } = require('./theme');
 
 // Ces compteurs ne se modifient jamais à la main : la numérotation doit rester continue.
 const PROTECTED_SETTINGS = new Set(['next_invoice_seq', 'next_credit_seq', 'next_quote_seq', 'last_backup_at', 'trial_started_at', 'trial_last_seen']);
@@ -17,6 +18,8 @@ function updateSettings(db, changes) {
   for (const [key, value] of Object.entries(changes)) {
     if (!(key in DEFAULT_SETTINGS)) throw new Error(`Paramètre inconnu : ${key}`);
     if (PROTECTED_SETTINGS.has(key)) throw new Error('Ce paramètre ne se modifie pas à la main.');
+    if (key === 'theme' && !Object.hasOwn(THEMES, value)) throw new Error('Couleur inconnue.');
+    if (key === 'company_logo' && value !== '' && !isValidLogo(value)) throw new Error('Ce logo n\u2019est pas une image valide.');
     stmt.run(String(value), key);
   }
   return getSettings(db);

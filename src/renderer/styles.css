@@ -81,7 +81,7 @@ th { padding: 12px; color: var(--muted); font-size: 13px; font-weight: 500; }
 td { padding: 8px 12px; border-top: 1px solid var(--rule); }
 th:first-child, td:first-child { padding-left: 0; }
 th:last-child, td:last-child { padding-right: 0; }
-tr.selected td { background: #F1F8F6; }
+tr.selected td { background: var(--accent-tint); }
 .empty { padding: 40px 0; text-align: center; color: var(--muted); }
 
 dl.facts { margin: 0; display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px 12px; }
@@ -157,8 +157,8 @@ input[type="date"] { min-height: 44px; width: 100%; padding: 0 10px; border: 1px
 .ink { color: var(--ink); font-weight: 600; }
 .bars { display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; height: 176px; border-bottom: 1px solid var(--border-strong); }
 .bar { flex: 1 1 0; max-width: 72px; height: 100%; padding: 0; border: 0; background: transparent; display: flex; align-items: flex-end; justify-content: center; cursor: pointer; }
-.bar span { display: block; width: 28px; border-radius: 4px 4px 0 0; background: #7FB5AA; }
-.bar.on span { background: var(--accent); }
+.bar span { display: block; width: 28px; border-radius: 4px 4px 0 0; background: var(--accent); opacity: 0.5; }
+.bar.on span { opacity: 1; }
 .bar-labels { display: flex; justify-content: space-around; gap: 8px; color: var(--muted); font-size: 13px; }
 .bar-labels span { flex: 1 1 0; max-width: 72px; text-align: center; }
 .late-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
@@ -184,3 +184,11 @@ details summary { min-height: 44px; display: flex; align-items: center; color: v
 .sidebar #trial-box { margin-top: auto; padding-top: 16px; }
 .trial { display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 10px; background: #E6EDFC; color: #1B45A8; font-size: 13px; }
 .trial .btn { align-self: flex-start; margin-top: 4px; }
+
+/* --- Apparence : logo et couleur --- */
+.logo-preview { max-height: 64px; max-width: 180px; border: 1px solid var(--border); border-radius: 8px; padding: 6px; background: #fff; }
+.logo-empty { width: 120px; height: 56px; border: 1px dashed #8A93A3; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12px; }
+.paper-logo { max-height: 64px; max-width: 200px; margin-bottom: 6px; align-self: flex-start; }
+.paper-title { color: var(--accent); }
+.paper-lines thead tr { border-bottom-color: var(--accent); }
+.paper-totals .line.top { border-top-color: var(--accent); }

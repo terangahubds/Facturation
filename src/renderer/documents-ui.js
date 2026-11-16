@@ -34,6 +34,7 @@ function documentPaper({ title, doc, settings, meta, toLabel, footParts }) {
   return h('section', { class: 'paper', 'aria-label': 'Aperçu du document' },
     h('div', { class: 'paper-head' },
       h('div', { class: 'stack-s' },
+        s.company_logo && h('img', { class: 'paper-logo', src: s.company_logo, alt: '' }),
         h('strong', {}, s.company_name || '[Nom de l’entreprise à renseigner dans les paramètres]'),
         s.company_address && h('span', { class: 'muted pre' }, s.company_address),
         (s.company_ninea || s.company_rccm) && h('span', { class: 'muted' },

@@ -129,8 +129,21 @@ async function refresh() {
   }
 }
 
+// Applique la couleur choisie dans les paramètres à toute l'interface.
+let THEMES = null;
+function applyTheme(key) {
+  const theme = (THEMES && THEMES[key]) || null;
+  if (!theme) return;
+  const root = document.documentElement.style;
+  root.setProperty('--accent', theme.accent);
+  root.setProperty('--accent-ink', theme.ink);
+  root.setProperty('--accent-tint', theme.tint);
+}
+
 async function refreshBrand() {
+  if (!THEMES) THEMES = await call('getThemes');
   const s = await call('getSettings');
+  applyTheme(s.theme);
   document.getElementById('brand-company').textContent = s.company_name || 'Entreprise à renseigner';
 }
 
@@ -387,6 +400,7 @@ async function renderSettings() {
       field('RCCM', 'company_rccm', s.company_rccm)),
     field('Adresse', 'company_address', s.company_address, { multiline: true }),
     field('E-mail affiché sur les factures', 'company_email', s.company_email, { type: 'email' })),
+  appearanceSection(s),
   h('section', { class: 'card narrow' },
     h('h2', {}, 'Facturation'),
     h('div', { class: 'grid' },
@@ -417,6 +431,33 @@ async function renderSettings() {
     form,
     licenceCard,
   ];
+}
+
+// --- Apparence : logo et couleur ---
+
+function appearanceSection(s) {
+  const error = h('div', { class: 'error', role: 'alert' });
+  const setLogo = async (action) => {
+    error.textContent = '';
+    try {
+      if (await action()) { toast('Logo mis à jour.'); await refresh(); }
+    } catch (err) {
+      error.textContent = cleanIpcError(err);
+    }
+  };
+  const preview = s.company_logo
+    ? h('img', { class: 'logo-preview', src: s.company_logo, alt: 'Logo de l\u2019entreprise' })
+    : h('div', { class: 'logo-empty' }, 'Aucun logo');
+  return h('section', { class: 'card narrow' },
+    h('h2', {}, 'Apparence'),
+    h('p', { class: 'muted' }, 'Le logo et la couleur apparaissent sur vos factures, vos avoirs et vos devis.'),
+    error,
+    h('div', { class: 'row' },
+      preview,
+      h('button', { type: 'button', class: 'btn', onclick: () => setLogo(() => window.api.chooseLogo()) }, s.company_logo ? 'Changer le logo' : 'Choisir un logo'),
+      s.company_logo && h('button', { type: 'button', class: 'btn', onclick: () => setLogo(async () => { await call('updateSettings', { company_logo: '' }); return true; }) }, 'Retirer le logo')),
+    h('span', { class: 'muted small' }, 'Image PNG ou JPEG, de moins de 1 Mo.'),
+    field('Couleur', 'theme', s.theme, { options: Object.entries(THEMES).map(([key, t]) => [key, t.label]), hint: 'Enregistrez pour appliquer la couleur.' }));
 }
 
 // --- Sauvegarde ---
